@@ -1,6 +1,6 @@
 --!strict
 -- Mod Menu (client) - generated from local sources
--- Version: 0.1.2
+-- Version: 0.2.0
 
 -- ===== src\core\compat.luau =====
 --!strict
@@ -127,6 +127,15 @@ ModMenu.State = {
 	strings = {} :: { [string]: string },
 	connections = {} :: { [string]: { RBXScriptConnection } },
 	waypoints = {} :: { { name: string, position: Vector3 } },
+	savedPosition = nil :: Vector3?,
+	savedPositionName = nil :: string?,
+	hiddenParts = {},
+	workspaceVisibilityOriginal = {},
+	lockedPartsOriginal = {},
+	reachOriginal = {},
+	originalWalkSpeed = nil :: number?,
+	originalJumpPower = nil :: number?,
+	originalHipHeight = nil :: number?,
 }
 
 ModMenu.State.setToggle = function(id: string, value: boolean, apply: ((boolean) -> ())?)
@@ -211,8 +220,9 @@ ModMenu.Config = {
 				end
 			end
 		end
-		if type(decoded.waypoints) == "table" then
-			ModMenu.State.waypoints = decoded.waypoints
+		if type(decoded.savedPosition) == "table" then
+			ModMenu.State.savedPosition = Vector3.new(decoded.savedPosition.x or 0, decoded.savedPosition.y or 0, decoded.savedPosition.z or 0)
+			ModMenu.State.savedPositionName = decoded.savedPositionName
 		end
 	end,
 	save = function()
@@ -223,6 +233,12 @@ ModMenu.Config = {
 			toggles = ModMenu.State.toggles,
 			numbers = ModMenu.State.numbers,
 			waypoints = ModMenu.State.waypoints,
+			savedPosition = ModMenu.State.savedPosition and {
+				x = ModMenu.State.savedPosition.X,
+				y = ModMenu.State.savedPosition.Y,
+				z = ModMenu.State.savedPosition.Z,
+			} or nil,
+			savedPositionName = ModMenu.State.savedPositionName,
 		}
 		local ok, encoded = pcall(HttpService.JSONEncode, HttpService, data)
 		if ok then
@@ -653,6 +669,8 @@ local categories = {
 	{ id = "visual", name = "Visual" },
 	{ id = "world", name = "World" },
 	{ id = "teleport", name = "Teleport" },
+	{ id = "character", name = "Character" },
+	{ id = "utility", name = "Utility" },
 	{ id = "settings", name = "Settings" },
 }
 
@@ -795,12 +813,22 @@ end
 
 ModMenu.Features.Movement.setWalkSpeed = function(value: number)
 	local h = hum()
-	if h then h.WalkSpeed = value end
+	if h then
+		if ModMenu.State.originalWalkSpeed == nil then
+			ModMenu.State.originalWalkSpeed = h.WalkSpeed
+		end
+		h.WalkSpeed = value
+	end
 end
 
 ModMenu.Features.Movement.setJumpPower = function(value: number)
 	local h = hum()
-	if h then h.JumpPower = value end
+	if h then
+		if ModMenu.State.originalJumpPower == nil then
+			ModMenu.State.originalJumpPower = h.JumpPower
+		end
+		h.JumpPower = value
+	end
 end
 
 ModMenu.Features.Movement.setGravity = function(value: number)
@@ -921,6 +949,60 @@ ModMenu.Features.Movement.teleportWaypoint = function(index: number)
 	end
 end
 
+ModMenu.Features.Movement.setHipHeight = function(value: number)
+	local h = hum()
+	if h then
+		if ModMenu.State.originalHipHeight == nil then
+			ModMenu.State.originalHipHeight = h.HipHeight
+		end
+		h.HipHeight = value
+	end
+end
+
+ModMenu.Features.Movement.clickTeleport = function(enabled: boolean)
+	local id = "movement.clicktp"
+	ModMenu.State.clearConnections(id)
+	if not enabled then return end
+	local mouse = S.Players.LocalPlayer:GetMouse()
+	local conn = mouse.Button1Down:Connect(function()
+		local r = root()
+		if r then
+			local target = mouse.Hit
+			if target then
+				r.CFrame = target * CFrame.new(0, 3, 0)
+			end
+		end
+	end)
+	table.insert(ModMenu.State.getConnections(id), conn)
+end
+
+ModMenu.Features.Movement.savePosition = function(name: string?)
+	local r = root()
+	if not r then return end
+	name = name or "Saved Position"
+	ModMenu.State.savedPosition = r.Position
+	ModMenu.State.savedPositionName = name
+	pcall(ModMenu.Config.save)
+	ModMenu.Notify("Position", "Saved: " .. name)
+end
+
+ModMenu.Features.Movement.loadPosition = function()
+	local r = root()
+	if r and ModMenu.State.savedPosition then
+		r.CFrame = CFrame.new(ModMenu.State.savedPosition)
+	end
+end
+
+ModMenu.Features.Movement.resetMovement = function()
+	local h = hum()
+	if h then
+		h.WalkSpeed = ModMenu.State.originalWalkSpeed or 16
+		h.JumpPower = ModMenu.State.originalJumpPower or 50
+		h.HipHeight = ModMenu.State.originalHipHeight or 0
+	end
+	ModMenu.Features.Movement.setGravity(196.2)
+end
+
 
 -- ===== src\features\visual.luau =====
 --!strict
@@ -1005,6 +1087,300 @@ ModMenu.Features.Visual.esp = function(enabled: boolean)
 		end
 	end)
 	table.insert(ModMenu.State.getConnections(id), conn2)
+end
+
+
+-- ===== src\features\character.luau =====
+--!strict
+-- features/character.luau
+local S = ModMenu.Services
+
+ModMenu.Features = ModMenu.Features or {}
+ModMenu.Features.Character = {}
+
+ModMenu.State.originalPlatformStand = ModMenu.State.originalPlatformStand or {}
+ModMenu.State.invisibleOriginal = ModMenu.State.invisibleOriginal or {}
+ModMenu.State.hiddenLimbOwner = ModMenu.State.hiddenLimbOwner or {}
+ModMenu.State.hiddenLimbParent = ModMenu.State.hiddenLimbParent or {}
+ModMenu.State.blockedHatMeshes = ModMenu.State.blockedHatMeshes or {}
+
+local function char()
+	return S.Players.LocalPlayer.Character
+end
+local function hum(): Humanoid?
+	local c = char()
+	if c then return c:FindFirstChildOfClass("Humanoid") end
+	return nil
+end
+
+ModMenu.Features.Character.platformStand = function(enabled: boolean)
+	local h = hum()
+	if not h then return end
+	if enabled then
+		ModMenu.State.originalPlatformStand[h] = h.PlatformStand
+		h.PlatformStand = true
+	else
+		local original = ModMenu.State.originalPlatformStand[h]
+		h.PlatformStand = if original ~= nil then original else false
+		ModMenu.State.originalPlatformStand[h] = nil
+	end
+end
+
+ModMenu.Features.Character.view = function(tagetName: string?)
+	local camera = S.Workspace.CurrentCamera
+	if not camera then return end
+	if not tagetName or tagetName == "" then
+		if S.Players.LocalPlayer.Character then
+			local h = S.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+			if h then camera.CameraSubject = h end
+		end
+		return
+	end
+	local target = S.Players:FindFirstChild(tagetName)
+	if target and target.Character then
+		local h = target.Character:FindFirstChildOfClass("Humanoid")
+		if h then camera.CameraSubject = h end
+	end
+end
+
+local limbNames = {
+	all = {"Left Arm", "Right Arm", "Left Leg", "Right Leg"},
+	arms = {"Left Arm", "Right Arm"},
+	legs = {"Left Leg", "Right Leg"},
+}
+
+ModMenu.Features.Character.setLimbs = function(mode: string?, enabled: boolean)
+	local c = char()
+	if not c then return end
+	local selected = limbNames[mode or "all"] or limbNames.all
+	for _, limbName in selected do
+		local limb = c:FindFirstChild(limbName)
+		if not limb or not limb:IsA("BasePart") then continue end
+		local owner = ModMenu.State.hiddenLimbOwner[limb]
+		if enabled then
+			if not owner then
+				ModMenu.State.hiddenLimbParent[limb] = limb.Parent
+				limb.Parent = nil
+				ModMenu.State.hiddenLimbOwner[limb] = mode or "all"
+			end
+		else
+			if owner == (mode or "all") then
+				local parent = ModMenu.State.hiddenLimbParent[limb]
+				if parent then limb.Parent = parent end
+				ModMenu.State.hiddenLimbOwner[limb] = nil
+				ModMenu.State.hiddenLimbParent[limb] = nil
+			end
+		end
+	end
+end
+
+ModMenu.Features.Character.invisible = function(enabled: boolean)
+	local c = char()
+	if not c then return end
+	if enabled then
+		for _, part in c:GetDescendants() do
+			if part:IsA("BasePart") or part:IsA("Decal") then
+				if ModMenu.State.invisibleOriginal[part] == nil then
+					ModMenu.State.invisibleOriginal[part] = part.Transparency
+				end
+				part.Transparency = 1
+			end
+		end
+	else
+		for part, value in ModMenu.State.invisibleOriginal do
+			if part and part.Parent then
+				part.Transparency = value
+			end
+		end
+		for k in ModMenu.State.invisibleOriginal do
+			ModMenu.State.invisibleOriginal[k] = nil
+		end
+	end
+end
+
+ModMenu.Features.Character.blockHats = function(enabled: boolean)
+	local c = char()
+	if not c then return end
+	if enabled then
+		for _, accessory in c:GetChildren() do
+			if accessory:IsA("Accessory") or accessory:IsA("Hat") then
+				for _, descendant in accessory:GetDescendants() do
+					if descendant:IsA("SpecialMesh") or descendant:IsA("SurfaceAppearance") then
+						if ModMenu.State.blockedHatMeshes[descendant] == nil then
+							ModMenu.State.blockedHatMeshes[descendant] = descendant.Parent
+						end
+						descendant.Parent = nil
+					end
+				end
+			end
+		end
+	else
+		for mesh, parent in ModMenu.State.blockedHatMeshes do
+			if mesh and parent then
+				mesh.Parent = parent
+			end
+		end
+		for k in ModMenu.State.blockedHatMeshes do
+			ModMenu.State.blockedHatMeshes[k] = nil
+		end
+	end
+end
+
+
+-- ===== src\features\utility.luau =====
+--!strict
+-- features/utility.luau
+local S = ModMenu.Services
+
+ModMenu.Features = ModMenu.Features or {}
+ModMenu.Features.Utility = {}
+ModMenu.State.hiddenParts = ModMenu.State.hiddenParts or {}
+ModMenu.State.workspaceVisibilityOriginal = ModMenu.State.workspaceVisibilityOriginal or {}
+ModMenu.State.lockedPartsOriginal = ModMenu.State.lockedPartsOriginal or {}
+
+-- Click TP / Delete / tool grabber connections handled via movement clickTeleport id and utility ids.
+
+ModMenu.Features.Utility.clickDelete = function(enabled: boolean)
+	local id = "utility.clickDelete"
+	ModMenu.State.clearConnections(id)
+	if not enabled then
+		-- restore hidden parts
+		for part in ModMenu.State.hiddenParts do
+			if part and part.Parent == nil then
+				-- best-effort restore to workspace
+				part.Parent = S.Workspace
+			end
+		end
+		table.clear(ModMenu.State.hiddenParts)
+		return
+	end
+	local mouse = S.Players.LocalPlayer:GetMouse()
+	local conn = mouse.Button1Down:Connect(function()
+		local target = mouse.Target
+		if target and target:IsA("BasePart") then
+			ModMenu.State.hiddenParts[target] = true
+			target.Parent = nil
+		end
+	end)
+	table.insert(ModMenu.State.getConnections(id), conn)
+end
+
+ModMenu.Features.Utility.toolGrabber = function(enabled: boolean)
+	local id = "utility.toolGrabber"
+	ModMenu.State.clearConnections(id)
+	if not enabled then return end
+	local function grab()
+		local bp = S.Players.LocalPlayer:FindFirstChild("Backpack")
+		if not bp then return end
+		for _, obj in S.Workspace:GetChildren() do
+			if obj:IsA("Tool") or obj:IsA("HopperBin") then
+				pcall(function() obj.Parent = bp end)
+			end
+		end
+	end
+	grab()
+	local conn = S.Workspace.ChildAdded:Connect(function(child)
+		if enabled and (child:IsA("Tool") or child:IsA("HopperBin")) then
+			task.wait()
+			local bp = S.Players.LocalPlayer:FindFirstChild("Backpack")
+			if bp then pcall(function() child.Parent = bp end) end
+		end
+	end)
+	table.insert(ModMenu.State.getConnections(id), conn)
+end
+
+ModMenu.Features.Utility.workspaceVisibility = function(value: number)
+	value = math.clamp(value, 0, 1)
+	if next(ModMenu.State.workspaceVisibilityOriginal) == nil then
+		for _, part in S.Workspace:GetDescendants() do
+			if part:IsA("BasePart") then
+				ModMenu.State.workspaceVisibilityOriginal[part] = part.Transparency
+			end
+		end
+	end
+	for part, original in ModMenu.State.workspaceVisibilityOriginal do
+		if part and part.Parent then
+			part.Transparency = original + (1 - original) * (1 - value)
+		end
+	end
+end
+
+ModMenu.Features.Utility.restoreWorkspaceVisibility = function()
+	for part, original in ModMenu.State.workspaceVisibilityOriginal do
+		if part and part.Parent then
+			part.Transparency = original
+		end
+	end
+	table.clear(ModMenu.State.workspaceVisibilityOriginal)
+end
+
+ModMenu.Features.Utility.lockWorkspace = function(enabled: boolean)
+	if enabled then
+		if next(ModMenu.State.lockedPartsOriginal) == nil then
+			for _, part in S.Workspace:GetDescendants() do
+				if part:IsA("BasePart") then
+					ModMenu.State.lockedPartsOriginal[part] = part.Anchored
+					part.Anchored = true
+				end
+			end
+		end
+	else
+		for part, original in ModMenu.State.lockedPartsOriginal do
+			if part and part.Parent then
+				part.Anchored = original
+			end
+		end
+		table.clear(ModMenu.State.lockedPartsOriginal)
+	end
+end
+
+ModMenu.Features.Utility.reach = function(enabled: boolean)
+	local char = S.Players.LocalPlayer.Character
+	if not char then return end
+	local tool = char:FindFirstChildOfClass("Tool") or S.Players.LocalPlayer:FindFirstChild("Backpack") and S.Players.LocalPlayer.Backpack:FindFirstChildOfClass("Tool")
+	local handles = {}
+	if tool then
+		for _, part in tool:GetDescendants() do
+			if part:IsA("BasePart") and (part.Name == "Handle" or part.Name:lower():find("handle")) then
+				table.insert(handles, part)
+			end
+		end
+	end
+	if enabled then
+		for _, handle in handles do
+			if ModMenu.State.reachOriginal == nil then ModMenu.State.reachOriginal = {} end
+			if ModMenu.State.reachOriginal[handle] == nil then
+				ModMenu.State.reachOriginal[handle] = handle.Size
+			end
+			handle.Size = handle.Size * Vector3.new(4, 4, 8)
+		end
+	else
+		if ModMenu.State.reachOriginal then
+			for handle, size in ModMenu.State.reachOriginal do
+				if handle and handle.Parent then
+					handle.Size = size
+				end
+			end
+			table.clear(ModMenu.State.reachOriginal)
+		end
+	end
+end
+
+ModMenu.Features.Utility.feCheck = function()
+	local filtering = false
+	pcall(function()
+		filtering = S.Workspace.FilteringEnabled
+	end)
+	ModMenu.Notify("FilteringEnabled", filtering and "Filtering enabled (FE)" or "Filtering disabled/unknown")
+end
+
+ModMenu.Features.Utility.playerInfo = function(targetName: string?)
+	local target = targetName and S.Players:FindFirstChild(targetName) or S.Players.LocalPlayer
+	if not target then
+		ModMenu.Notify("Info", "Player not found")
+		return
+	end
+	ModMenu.Notify("Player Info", string.format("%s | Age: %d | Id: %d", target.Name, target.AccountAge, target.UserId))
 end
 
 
@@ -1166,6 +1542,54 @@ do
 	C.button(p, "Teleport to Spawn", function() ModMenu.Features.Teleport.toSpawn() end)
 	C.button(p, "Copy Position", function() ModMenu.Features.Teleport.copyPosition() end)
 	C.button(p, "Rejoin Server", function() ModMenu.Features.Teleport.rejoin() end)
+end
+
+-- Character
+do
+	local p = Panels.character
+	C.section(p, "Body")
+	C.slider(p, "character.hipHeight", "Hip Height", 0, 10, 2, function(v) ModMenu.Features.Movement.setHipHeight(v) end)
+	C.toggle(p, "character.platformStand", "Platform Stand", false, function(v) ModMenu.Features.Character.platformStand(v) end)
+	C.toggle(p, "character.invisible", "Invisible", false, function(v) ModMenu.Features.Character.invisible(v) end)
+	C.toggle(p, "character.nolimbs", "No Limbs", false, function(v) ModMenu.Features.Character.setLimbs("all", v) end)
+	C.toggle(p, "character.noarms", "No Arms", false, function(v) ModMenu.Features.Character.setLimbs("arms", v) end)
+	C.toggle(p, "character.nolegs", "No Legs", false, function(v) ModMenu.Features.Character.setLimbs("legs", v) end)
+	C.toggle(p, "character.blockHats", "Block Hats", false, function(v) ModMenu.Features.Character.blockHats(v) end)
+	C.section(p, "Camera")
+	local players = {}
+	for _, plr in ModMenu.Services.Players:GetPlayers() do
+		table.insert(players, plr.Name)
+	end
+	C.dropdown(p, "character.viewTarget", "View Player", players, players[1], function(v)
+		ModMenu.Features.Character.view(v)
+	end)
+	C.button(p, "Unview", function() ModMenu.Features.Character.view(nil) end)
+	C.button(p, "Reset Movement", function() ModMenu.Features.Movement.resetMovement() end)
+end
+
+-- Utility
+do
+	local p = Panels.utility
+	C.section(p, "Movement Tools")
+	C.toggle(p, "utility.clickTP", "Click Teleport", false, function(v) ModMenu.Features.Movement.clickTeleport(v) end)
+	C.button(p, "Save Position", function() ModMenu.Features.Movement.savePosition() end)
+	C.button(p, "Load Position", function() ModMenu.Features.Movement.loadPosition() end)
+	C.section(p, "World Tools")
+	C.slider(p, "utility.workspaceVisibility", "Workspace Visibility", 0, 1, 1, function(v) ModMenu.Features.Utility.workspaceVisibility(v) end)
+	C.button(p, "Restore Workspace", function() ModMenu.Features.Utility.restoreWorkspaceVisibility() end)
+	C.toggle(p, "utility.clickDelete", "Click Delete (Reversible)", false, function(v) ModMenu.Features.Utility.clickDelete(v) end)
+	C.toggle(p, "utility.lockWorkspace", "Lock Workspace", false, function(v) ModMenu.Features.Utility.lockWorkspace(v) end)
+	C.toggle(p, "utility.toolGrabber", "Tool Grabber", false, function(v) ModMenu.Features.Utility.toolGrabber(v) end)
+	C.toggle(p, "utility.reach", "Tool Reach", false, function(v) ModMenu.Features.Utility.reach(v) end)
+	C.section(p, "Diagnostics")
+	C.button(p, "FE Check", function() ModMenu.Features.Utility.feCheck() end)
+	local players = {}
+	for _, plr in ModMenu.Services.Players:GetPlayers() do
+		table.insert(players, plr.Name)
+	end
+	C.dropdown(p, "utility.playerInfoTarget", "Player Info Target", players, players[1], function(v)
+		ModMenu.Features.Utility.playerInfo(v)
+	end)
 end
 
 -- Settings

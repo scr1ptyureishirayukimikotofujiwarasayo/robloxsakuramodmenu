@@ -11,6 +11,15 @@ ModMenu.State = {
 	strings = {} :: { [string]: string },
 	connections = {} :: { [string]: { RBXScriptConnection } },
 	waypoints = {} :: { { name: string, position: Vector3 } },
+	savedPosition = nil :: Vector3?,
+	savedPositionName = nil :: string?,
+	hiddenParts = {},
+	workspaceVisibilityOriginal = {},
+	lockedPartsOriginal = {},
+	reachOriginal = {},
+	originalWalkSpeed = nil :: number?,
+	originalJumpPower = nil :: number?,
+	originalHipHeight = nil :: number?,
 }
 
 ModMenu.State.setToggle = function(id: string, value: boolean, apply: ((boolean) -> ())?)

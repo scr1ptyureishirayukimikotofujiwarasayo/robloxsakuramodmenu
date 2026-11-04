@@ -24,12 +24,22 @@ end
 
 ModMenu.Features.Movement.setWalkSpeed = function(value: number)
 	local h = hum()
-	if h then h.WalkSpeed = value end
+	if h then
+		if ModMenu.State.originalWalkSpeed == nil then
+			ModMenu.State.originalWalkSpeed = h.WalkSpeed
+		end
+		h.WalkSpeed = value
+	end
 end
 
 ModMenu.Features.Movement.setJumpPower = function(value: number)
 	local h = hum()
-	if h then h.JumpPower = value end
+	if h then
+		if ModMenu.State.originalJumpPower == nil then
+			ModMenu.State.originalJumpPower = h.JumpPower
+		end
+		h.JumpPower = value
+	end
 end
 
 ModMenu.Features.Movement.setGravity = function(value: number)
@@ -148,4 +158,58 @@ ModMenu.Features.Movement.teleportWaypoint = function(index: number)
 	if wp and r then
 		r.CFrame = CFrame.new(wp.position)
 	end
+end
+
+ModMenu.Features.Movement.setHipHeight = function(value: number)
+	local h = hum()
+	if h then
+		if ModMenu.State.originalHipHeight == nil then
+			ModMenu.State.originalHipHeight = h.HipHeight
+		end
+		h.HipHeight = value
+	end
+end
+
+ModMenu.Features.Movement.clickTeleport = function(enabled: boolean)
+	local id = "movement.clicktp"
+	ModMenu.State.clearConnections(id)
+	if not enabled then return end
+	local mouse = S.Players.LocalPlayer:GetMouse()
+	local conn = mouse.Button1Down:Connect(function()
+		local r = root()
+		if r then
+			local target = mouse.Hit
+			if target then
+				r.CFrame = target * CFrame.new(0, 3, 0)
+			end
+		end
+	end)
+	table.insert(ModMenu.State.getConnections(id), conn)
+end
+
+ModMenu.Features.Movement.savePosition = function(name: string?)
+	local r = root()
+	if not r then return end
+	name = name or "Saved Position"
+	ModMenu.State.savedPosition = r.Position
+	ModMenu.State.savedPositionName = name
+	pcall(ModMenu.Config.save)
+	ModMenu.Notify("Position", "Saved: " .. name)
+end
+
+ModMenu.Features.Movement.loadPosition = function()
+	local r = root()
+	if r and ModMenu.State.savedPosition then
+		r.CFrame = CFrame.new(ModMenu.State.savedPosition)
+	end
+end
+
+ModMenu.Features.Movement.resetMovement = function()
+	local h = hum()
+	if h then
+		h.WalkSpeed = ModMenu.State.originalWalkSpeed or 16
+		h.JumpPower = ModMenu.State.originalJumpPower or 50
+		h.HipHeight = ModMenu.State.originalHipHeight or 0
+	end
+	ModMenu.Features.Movement.setGravity(196.2)
 end

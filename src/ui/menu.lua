@@ -131,6 +131,8 @@ local categories = {
 	{ id = "visual", name = "Visual" },
 	{ id = "world", name = "World" },
 	{ id = "teleport", name = "Teleport" },
+	{ id = "character", name = "Character" },
+	{ id = "utility", name = "Utility" },
 	{ id = "settings", name = "Settings" },
 }
 

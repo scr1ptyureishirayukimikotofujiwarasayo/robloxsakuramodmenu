@@ -54,8 +54,9 @@ ModMenu.Config = {
 				end
 			end
 		end
-		if type(decoded.waypoints) == "table" then
-			ModMenu.State.waypoints = decoded.waypoints
+		if type(decoded.savedPosition) == "table" then
+			ModMenu.State.savedPosition = Vector3.new(decoded.savedPosition.x or 0, decoded.savedPosition.y or 0, decoded.savedPosition.z or 0)
+			ModMenu.State.savedPositionName = decoded.savedPositionName
 		end
 	end,
 	save = function()
@@ -66,6 +67,12 @@ ModMenu.Config = {
 			toggles = ModMenu.State.toggles,
 			numbers = ModMenu.State.numbers,
 			waypoints = ModMenu.State.waypoints,
+			savedPosition = ModMenu.State.savedPosition and {
+				x = ModMenu.State.savedPosition.X,
+				y = ModMenu.State.savedPosition.Y,
+				z = ModMenu.State.savedPosition.Z,
+			} or nil,
+			savedPositionName = ModMenu.State.savedPositionName,
 		}
 		local ok, encoded = pcall(HttpService.JSONEncode, HttpService, data)
 		if ok then

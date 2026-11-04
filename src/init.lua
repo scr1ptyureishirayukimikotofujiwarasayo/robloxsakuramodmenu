@@ -71,6 +71,54 @@ do
 	C.button(p, "Rejoin Server", function() ModMenu.Features.Teleport.rejoin() end)
 end
 
+-- Character
+do
+	local p = Panels.character
+	C.section(p, "Body")
+	C.slider(p, "character.hipHeight", "Hip Height", 0, 10, 2, function(v) ModMenu.Features.Movement.setHipHeight(v) end)
+	C.toggle(p, "character.platformStand", "Platform Stand", false, function(v) ModMenu.Features.Character.platformStand(v) end)
+	C.toggle(p, "character.invisible", "Invisible", false, function(v) ModMenu.Features.Character.invisible(v) end)
+	C.toggle(p, "character.nolimbs", "No Limbs", false, function(v) ModMenu.Features.Character.setLimbs("all", v) end)
+	C.toggle(p, "character.noarms", "No Arms", false, function(v) ModMenu.Features.Character.setLimbs("arms", v) end)
+	C.toggle(p, "character.nolegs", "No Legs", false, function(v) ModMenu.Features.Character.setLimbs("legs", v) end)
+	C.toggle(p, "character.blockHats", "Block Hats", false, function(v) ModMenu.Features.Character.blockHats(v) end)
+	C.section(p, "Camera")
+	local players = {}
+	for _, plr in ModMenu.Services.Players:GetPlayers() do
+		table.insert(players, plr.Name)
+	end
+	C.dropdown(p, "character.viewTarget", "View Player", players, players[1], function(v)
+		ModMenu.Features.Character.view(v)
+	end)
+	C.button(p, "Unview", function() ModMenu.Features.Character.view(nil) end)
+	C.button(p, "Reset Movement", function() ModMenu.Features.Movement.resetMovement() end)
+end
+
+-- Utility
+do
+	local p = Panels.utility
+	C.section(p, "Movement Tools")
+	C.toggle(p, "utility.clickTP", "Click Teleport", false, function(v) ModMenu.Features.Movement.clickTeleport(v) end)
+	C.button(p, "Save Position", function() ModMenu.Features.Movement.savePosition() end)
+	C.button(p, "Load Position", function() ModMenu.Features.Movement.loadPosition() end)
+	C.section(p, "World Tools")
+	C.slider(p, "utility.workspaceVisibility", "Workspace Visibility", 0, 1, 1, function(v) ModMenu.Features.Utility.workspaceVisibility(v) end)
+	C.button(p, "Restore Workspace", function() ModMenu.Features.Utility.restoreWorkspaceVisibility() end)
+	C.toggle(p, "utility.clickDelete", "Click Delete (Reversible)", false, function(v) ModMenu.Features.Utility.clickDelete(v) end)
+	C.toggle(p, "utility.lockWorkspace", "Lock Workspace", false, function(v) ModMenu.Features.Utility.lockWorkspace(v) end)
+	C.toggle(p, "utility.toolGrabber", "Tool Grabber", false, function(v) ModMenu.Features.Utility.toolGrabber(v) end)
+	C.toggle(p, "utility.reach", "Tool Reach", false, function(v) ModMenu.Features.Utility.reach(v) end)
+	C.section(p, "Diagnostics")
+	C.button(p, "FE Check", function() ModMenu.Features.Utility.feCheck() end)
+	local players = {}
+	for _, plr in ModMenu.Services.Players:GetPlayers() do
+		table.insert(players, plr.Name)
+	end
+	C.dropdown(p, "utility.playerInfoTarget", "Player Info Target", players, players[1], function(v)
+		ModMenu.Features.Utility.playerInfo(v)
+	end)
+end
+
 -- Settings
 do
 	local p = Panels.settings
