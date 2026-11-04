@@ -10332,7 +10332,17 @@ Main = (function()
 		
 		local holder
 		if Main.CanUseCoreGui then
-			holder = (type(env.gethui) == "function" and env.gethui()) or service.CoreGui
+			-- gethui() can THROW on executors that implement it as CoreGui.RobloxGui,
+			-- since RobloxGui is no longer a member of CoreGui. Guard the call.
+			if type(env.gethui) == "function" then
+				local ok, ui = pcall(env.gethui)
+				if ok and ui then
+					holder = ui
+				end
+			end
+			if not holder then
+				holder = service.CoreGui
+			end
 		end
 		Main.GuiHolder = holder or plr:FindFirstChildOfClass("PlayerGui") or plr:WaitForChild("PlayerGui")
 		
