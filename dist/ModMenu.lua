@@ -224,15 +224,35 @@ ModMenu.Config = {
 			ModMenu.State.savedPosition = Vector3.new(decoded.savedPosition.x or 0, decoded.savedPosition.y or 0, decoded.savedPosition.z or 0)
 			ModMenu.State.savedPositionName = decoded.savedPositionName
 		end
+		if type(decoded.waypoints) == "table" then
+			table.clear(ModMenu.State.waypoints)
+			for _, wp in decoded.waypoints do
+				if type(wp) == "table" and type(wp.position) == "table" then
+					local pos = wp.position
+					table.insert(ModMenu.State.waypoints, {
+						name = type(wp.name) == "string" and wp.name or ("WP " .. tostring(#ModMenu.State.waypoints + 1)),
+						position = Vector3.new(pos.x or 0, pos.y or 0, pos.z or 0),
+					})
+				end
+			end
+		end
 	end,
 	save = function()
 		local accent = ModMenu.State.settings.accent
+		local openKey = ModMenu.State.settings.openKey
+		local waypoints = {}
+		for _, wp in ModMenu.State.waypoints do
+			waypoints[#waypoints + 1] = {
+				name = wp.name,
+				position = { x = wp.position.X, y = wp.position.Y, z = wp.position.Z },
+			}
+		end
 		local data = {
-			openKey = tostring(ModMenu.State.settings.openKey),
+			openKey = typeof(openKey) == "EnumItem" and openKey.Name or tostring(openKey),
 			accent = { r = accent.R, g = accent.G, b = accent.B },
 			toggles = ModMenu.State.toggles,
 			numbers = ModMenu.State.numbers,
-			waypoints = ModMenu.State.waypoints,
+			waypoints = waypoints,
 			savedPosition = ModMenu.State.savedPosition and {
 				x = ModMenu.State.savedPosition.X,
 				y = ModMenu.State.savedPosition.Y,
@@ -369,10 +389,25 @@ local function toggle(parent: Instance, id: string, label: string, initial: bool
 	end
 	refresh()
 
+	-- Keep every toggle registered under the same id (e.g. the Home and Visual
+	-- "Fullbright" switches) visually in sync.
+	ModMenu.UI.toggleSync[id] = ModMenu.UI.toggleSync[id] or {}
+	local syncers = ModMenu.UI.toggleSync[id]
+	local selfSyncer = function(newState: boolean)
+		if newState ~= state then
+			state = newState
+			refresh()
+		end
+	end
+	table.insert(syncers, selfSyncer)
+
 	btn.MouseButton1Click:Connect(function()
 		state = not state
 		ModMenu.State.toggles[id] = state
 		refresh()
+		for _, sync in syncers do
+			sync(state)
+		end
 		if apply then
 			pcall(apply, state)
 		end
@@ -501,20 +536,26 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 	btn.Text = selected
 	local open = false
 	local list = Instance.new("ScrollingFrame")
-	list.Size = UDim2.new(0.6, 0, 0, math.min(#items * 22, 120))
+	list.Size = UDim2.new(0.6, 0, 0, math.min(#items * 22, 160))
 	list.Position = UDim2.new(0.4, 0, 1, 0)
 	list.BackgroundColor3 = Theme.panel
 	list.BorderSizePixel = 0
 	list.Visible = false
 	list.ZIndex = 20
-	list.ScrollBarThickness = 4
+	list.ScrollBarThickness = 6
+	list.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	list.CanvasSize = UDim2.new(0, 0, 0, #items * 22)
 	Theme.corner(list, 6)
+	local listLayout = Instance.new("UIListLayout")
+	listLayout.Padding = UDim.new(0, 1)
+	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	listLayout.Parent = list
 	list.Parent = row
 
 	for i, item in items do
 		local b = Instance.new("TextButton")
 		b.Size = UDim2.new(1, 0, 0, 22)
-		b.Position = UDim2.new(0, 0, 0, (i - 1) * 22)
+		b.LayoutOrder = i
 		b.BackgroundColor3 = Theme.surface
 		b.TextColor3 = Theme.text
 		b.Font = Theme.font
@@ -547,6 +588,7 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 end
 
 ModMenu.UI = ModMenu.UI or {}
+ModMenu.UI.toggleSync = ModMenu.UI.toggleSync or {}
 ModMenu.UI.Components = {
 	button = button,
 	toggle = toggle,
@@ -599,35 +641,52 @@ local function fetchCustomImage(url: string): string?
 	return nil
 end
 
-local parentGui = nil
-if gethui then
-	local ok, gui = pcall(gethui)
-	if ok and gui then
-		parentGui = gui
+-- Always create our own ScreenGui. gethui() and syn.protect_gui() return a
+-- *container* (CoreGui or a hidden folder), not a ScreenGui, so ScreenGui-only
+-- properties must never be set on their result.
+local function makeScreenGui(): ScreenGui
+	local g = Instance.new("ScreenGui")
+	g.Name = "ModMenu"
+	g.ResetOnSpawn = false
+	g.DisplayOrder = 2147483647
+	return g
+end
+
+local function preferredContainer(): Instance?
+	if gethui then
+		local ok, container = pcall(gethui)
+		if ok and typeof(container) == "Instance" then
+			return container
+		end
+	end
+	local okCore, coreGui = pcall(function() return game:GetService("CoreGui") end)
+	if okCore and coreGui then
+		return coreGui
+	end
+	return nil
+end
+
+local parentGui = makeScreenGui()
+if syn_protect_gui then
+	pcall(syn_protect_gui, parentGui)
+end
+local container = preferredContainer()
+local parented = false
+if container then
+	parented = pcall(function() parentGui.Parent = container end)
+end
+if not parented then
+	local lp = ModMenu.Services.Players.LocalPlayer
+	local pg = lp and lp:FindFirstChild("PlayerGui")
+	if not pg and lp then
+		pg = lp:WaitForChild("PlayerGui", 10)
+	end
+	if pg then
+		parented = pcall(function() parentGui.Parent = pg end)
 	end
 end
-if (not parentGui) and syn_protect_gui then
-	local g = Instance.new("ScreenGui")
-	g.Name = "ModMenu"
-	g.ResetOnSpawn = false
-	g.DisplayOrder = 2147483647
-	pcall(syn_protect_gui, g)
-	g.Parent = (ModMenu.Services.Players.LocalPlayer:FindFirstChild("PlayerGui") or game:GetService("CoreGui"))
-	parentGui = g
-elseif not parentGui then
-	local g = Instance.new("ScreenGui")
-	g.Name = "ModMenu"
-	g.ResetOnSpawn = false
-	g.DisplayOrder = 2147483647
-	pcall(function() g.Parent = game:GetService("CoreGui") end)
-	parentGui = g
-end
-if not parentGui or not parentGui:IsA("Instance") then
-	local g = Instance.new("ScreenGui")
-	g.Name = "ModMenu"
-	g.ResetOnSpawn = false
-	g.Parent = ModMenu.Services.Players.LocalPlayer:WaitForChild("PlayerGui")
-	parentGui = g
+if not parented then
+	warn("[ModMenu] could not parent UI; menu will not be visible")
 end
 
 ModMenu.Menu = { ScreenGui = parentGui, Open = false }
@@ -1150,7 +1209,10 @@ ModMenu.Features.Visual.esp = function(enabled: boolean)
 		if p ~= S.Players.LocalPlayer and p.Character then applyTo(p.Character) end
 	end
 	local conn = S.Players.PlayerAdded:Connect(function(p)
-		p.CharacterAdded:Connect(function(c) if ModMenu.State.toggles["visual.esp"] then applyTo(c) end end)
+		local cconn = p.CharacterAdded:Connect(function(c)
+			if ModMenu.State.toggles["visual.esp"] then applyTo(c) end
+		end)
+		table.insert(ModMenu.State.getConnections(id), cconn)
 	end)
 	table.insert(ModMenu.State.getConnections(id), conn)
 	local conn2 = RunService.Heartbeat:Connect(function()
@@ -1323,11 +1385,14 @@ ModMenu.Features.Utility.clickDelete = function(enabled: boolean)
 	local id = "utility.clickDelete"
 	ModMenu.State.clearConnections(id)
 	if not enabled then
-		-- restore hidden parts
-		for part in ModMenu.State.hiddenParts do
+		-- restore hidden parts to their original parent
+		for part, originalParent in ModMenu.State.hiddenParts do
 			if part and part.Parent == nil then
-				-- best-effort restore to workspace
-				part.Parent = S.Workspace
+				if typeof(originalParent) == "Instance" then
+					part.Parent = originalParent
+				else
+					part.Parent = S.Workspace
+				end
 			end
 		end
 		table.clear(ModMenu.State.hiddenParts)
@@ -1337,7 +1402,7 @@ ModMenu.Features.Utility.clickDelete = function(enabled: boolean)
 	local conn = mouse.Button1Down:Connect(function()
 		local target = mouse.Target
 		if target and target:IsA("BasePart") then
-			ModMenu.State.hiddenParts[target] = true
+			ModMenu.State.hiddenParts[target] = target.Parent
 			target.Parent = nil
 		end
 	end)
@@ -1414,35 +1479,38 @@ ModMenu.Features.Utility.lockWorkspace = function(enabled: boolean)
 end
 
 ModMenu.Features.Utility.reach = function(enabled: boolean)
-	local char = S.Players.LocalPlayer.Character
-	if not char then return end
-	local tool = char:FindFirstChildOfClass("Tool") or S.Players.LocalPlayer:FindFirstChild("Backpack") and S.Players.LocalPlayer.Backpack:FindFirstChildOfClass("Tool")
-	local handles = {}
-	if tool then
+	local id = "utility.reach"
+	ModMenu.State.clearConnections(id)
+	if ModMenu.State.reachOriginal == nil then ModMenu.State.reachOriginal = {} end
+	if not enabled then
+		for handle, size in ModMenu.State.reachOriginal do
+			if handle and handle.Parent then
+				handle.Size = size
+			end
+		end
+		table.clear(ModMenu.State.reachOriginal)
+		return
+	end
+	local function applyReach()
+		local lp = S.Players.LocalPlayer
+		local char = lp.Character
+		if not char then return end
+		local tool = char:FindFirstChildOfClass("Tool")
+		local backpack = lp:FindFirstChild("Backpack")
+		if not tool and backpack then tool = backpack:FindFirstChildOfClass("Tool") end
+		if not tool then return end
 		for _, part in tool:GetDescendants() do
-			if part:IsA("BasePart") and (part.Name == "Handle" or part.Name:lower():find("handle")) then
-				table.insert(handles, part)
-			end
-		end
-	end
-	if enabled then
-		for _, handle in handles do
-			if ModMenu.State.reachOriginal == nil then ModMenu.State.reachOriginal = {} end
-			if ModMenu.State.reachOriginal[handle] == nil then
-				ModMenu.State.reachOriginal[handle] = handle.Size
-			end
-			handle.Size = handle.Size * Vector3.new(4, 4, 8)
-		end
-	else
-		if ModMenu.State.reachOriginal then
-			for handle, size in ModMenu.State.reachOriginal do
-				if handle and handle.Parent then
-					handle.Size = size
+			if part:IsA("BasePart") and part.Name:lower():find("handle") then
+				if ModMenu.State.reachOriginal[part] == nil then
+					ModMenu.State.reachOriginal[part] = part.Size
 				end
+				part.Size = ModMenu.State.reachOriginal[part] * Vector3.new(4, 4, 8)
 			end
-			table.clear(ModMenu.State.reachOriginal)
 		end
 	end
+	applyReach()
+	local conn = S.RunService.Heartbeat:Connect(applyReach)
+	table.insert(ModMenu.State.getConnections(id), conn)
 end
 
 ModMenu.Features.Utility.feCheck = function()
@@ -1685,7 +1753,7 @@ do
 	T.textStroke(info, 0.65)
 	C.section(p, "Quick Actions")
 	C.button(p, "Copy Position", function() ModMenu.Features.Teleport.copyPosition() end)
-	C.toggle(p, "fullbright", "Fullbright", false, function(v) ModMenu.Features.Visual.fullbright(v) end)
+	C.toggle(p, "visual.fullbright", "Fullbright", false, function(v) ModMenu.Features.Visual.fullbright(v) end)
 end
 
 -- Player
@@ -1795,7 +1863,7 @@ do
 	for _, k in Enum.KeyCode:GetEnumItems() do
 		table.insert(keys, k.Name)
 	end
-	C.dropdown(p, "settings.openKey", "Open Key", keys, tostring(ModMenu.State.settings.openKey), function(v)
+	C.dropdown(p, "settings.openKey", "Open Key", keys, ModMenu.State.settings.openKey.Name, function(v)
 		local k = Enum.KeyCode[v]
 		if k then
 			ModMenu.State.settings.openKey = k
@@ -1817,6 +1885,6 @@ do
 	end)
 end
 
-ModMenu.Notify("Mod Menu", "Loaded. Press " .. tostring(ModMenu.State.settings.openKey) .. " to open.")
+ModMenu.Notify("Mod Menu", "Loaded. Press " .. ModMenu.State.settings.openKey.Name .. " to open.")
 print("[ModMenu] init complete")
 

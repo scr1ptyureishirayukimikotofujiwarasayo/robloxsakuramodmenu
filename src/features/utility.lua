@@ -14,11 +14,14 @@ ModMenu.Features.Utility.clickDelete = function(enabled: boolean)
 	local id = "utility.clickDelete"
 	ModMenu.State.clearConnections(id)
 	if not enabled then
-		-- restore hidden parts
-		for part in ModMenu.State.hiddenParts do
+		-- restore hidden parts to their original parent
+		for part, originalParent in ModMenu.State.hiddenParts do
 			if part and part.Parent == nil then
-				-- best-effort restore to workspace
-				part.Parent = S.Workspace
+				if typeof(originalParent) == "Instance" then
+					part.Parent = originalParent
+				else
+					part.Parent = S.Workspace
+				end
 			end
 		end
 		table.clear(ModMenu.State.hiddenParts)
@@ -28,7 +31,7 @@ ModMenu.Features.Utility.clickDelete = function(enabled: boolean)
 	local conn = mouse.Button1Down:Connect(function()
 		local target = mouse.Target
 		if target and target:IsA("BasePart") then
-			ModMenu.State.hiddenParts[target] = true
+			ModMenu.State.hiddenParts[target] = target.Parent
 			target.Parent = nil
 		end
 	end)
@@ -105,35 +108,38 @@ ModMenu.Features.Utility.lockWorkspace = function(enabled: boolean)
 end
 
 ModMenu.Features.Utility.reach = function(enabled: boolean)
-	local char = S.Players.LocalPlayer.Character
-	if not char then return end
-	local tool = char:FindFirstChildOfClass("Tool") or S.Players.LocalPlayer:FindFirstChild("Backpack") and S.Players.LocalPlayer.Backpack:FindFirstChildOfClass("Tool")
-	local handles = {}
-	if tool then
+	local id = "utility.reach"
+	ModMenu.State.clearConnections(id)
+	if ModMenu.State.reachOriginal == nil then ModMenu.State.reachOriginal = {} end
+	if not enabled then
+		for handle, size in ModMenu.State.reachOriginal do
+			if handle and handle.Parent then
+				handle.Size = size
+			end
+		end
+		table.clear(ModMenu.State.reachOriginal)
+		return
+	end
+	local function applyReach()
+		local lp = S.Players.LocalPlayer
+		local char = lp.Character
+		if not char then return end
+		local tool = char:FindFirstChildOfClass("Tool")
+		local backpack = lp:FindFirstChild("Backpack")
+		if not tool and backpack then tool = backpack:FindFirstChildOfClass("Tool") end
+		if not tool then return end
 		for _, part in tool:GetDescendants() do
-			if part:IsA("BasePart") and (part.Name == "Handle" or part.Name:lower():find("handle")) then
-				table.insert(handles, part)
-			end
-		end
-	end
-	if enabled then
-		for _, handle in handles do
-			if ModMenu.State.reachOriginal == nil then ModMenu.State.reachOriginal = {} end
-			if ModMenu.State.reachOriginal[handle] == nil then
-				ModMenu.State.reachOriginal[handle] = handle.Size
-			end
-			handle.Size = handle.Size * Vector3.new(4, 4, 8)
-		end
-	else
-		if ModMenu.State.reachOriginal then
-			for handle, size in ModMenu.State.reachOriginal do
-				if handle and handle.Parent then
-					handle.Size = size
+			if part:IsA("BasePart") and part.Name:lower():find("handle") then
+				if ModMenu.State.reachOriginal[part] == nil then
+					ModMenu.State.reachOriginal[part] = part.Size
 				end
+				part.Size = ModMenu.State.reachOriginal[part] * Vector3.new(4, 4, 8)
 			end
-			table.clear(ModMenu.State.reachOriginal)
 		end
 	end
+	applyReach()
+	local conn = S.RunService.Heartbeat:Connect(applyReach)
+	table.insert(ModMenu.State.getConnections(id), conn)
 end
 
 ModMenu.Features.Utility.feCheck = function()

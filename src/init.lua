@@ -20,7 +20,7 @@ do
 	T.textStroke(info, 0.65)
 	C.section(p, "Quick Actions")
 	C.button(p, "Copy Position", function() ModMenu.Features.Teleport.copyPosition() end)
-	C.toggle(p, "fullbright", "Fullbright", false, function(v) ModMenu.Features.Visual.fullbright(v) end)
+	C.toggle(p, "visual.fullbright", "Fullbright", false, function(v) ModMenu.Features.Visual.fullbright(v) end)
 end
 
 -- Player
@@ -130,7 +130,7 @@ do
 	for _, k in Enum.KeyCode:GetEnumItems() do
 		table.insert(keys, k.Name)
 	end
-	C.dropdown(p, "settings.openKey", "Open Key", keys, tostring(ModMenu.State.settings.openKey), function(v)
+	C.dropdown(p, "settings.openKey", "Open Key", keys, ModMenu.State.settings.openKey.Name, function(v)
 		local k = Enum.KeyCode[v]
 		if k then
 			ModMenu.State.settings.openKey = k
@@ -152,5 +152,5 @@ do
 	end)
 end
 
-ModMenu.Notify("Mod Menu", "Loaded. Press " .. tostring(ModMenu.State.settings.openKey) .. " to open.")
+ModMenu.Notify("Mod Menu", "Loaded. Press " .. ModMenu.State.settings.openKey.Name .. " to open.")
 print("[ModMenu] init complete")

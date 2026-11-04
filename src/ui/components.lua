@@ -60,10 +60,25 @@ local function toggle(parent: Instance, id: string, label: string, initial: bool
 	end
 	refresh()
 
+	-- Keep every toggle registered under the same id (e.g. the Home and Visual
+	-- "Fullbright" switches) visually in sync.
+	ModMenu.UI.toggleSync[id] = ModMenu.UI.toggleSync[id] or {}
+	local syncers = ModMenu.UI.toggleSync[id]
+	local selfSyncer = function(newState: boolean)
+		if newState ~= state then
+			state = newState
+			refresh()
+		end
+	end
+	table.insert(syncers, selfSyncer)
+
 	btn.MouseButton1Click:Connect(function()
 		state = not state
 		ModMenu.State.toggles[id] = state
 		refresh()
+		for _, sync in syncers do
+			sync(state)
+		end
 		if apply then
 			pcall(apply, state)
 		end
@@ -192,20 +207,26 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 	btn.Text = selected
 	local open = false
 	local list = Instance.new("ScrollingFrame")
-	list.Size = UDim2.new(0.6, 0, 0, math.min(#items * 22, 120))
+	list.Size = UDim2.new(0.6, 0, 0, math.min(#items * 22, 160))
 	list.Position = UDim2.new(0.4, 0, 1, 0)
 	list.BackgroundColor3 = Theme.panel
 	list.BorderSizePixel = 0
 	list.Visible = false
 	list.ZIndex = 20
-	list.ScrollBarThickness = 4
+	list.ScrollBarThickness = 6
+	list.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	list.CanvasSize = UDim2.new(0, 0, 0, #items * 22)
 	Theme.corner(list, 6)
+	local listLayout = Instance.new("UIListLayout")
+	listLayout.Padding = UDim.new(0, 1)
+	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	listLayout.Parent = list
 	list.Parent = row
 
 	for i, item in items do
 		local b = Instance.new("TextButton")
 		b.Size = UDim2.new(1, 0, 0, 22)
-		b.Position = UDim2.new(0, 0, 0, (i - 1) * 22)
+		b.LayoutOrder = i
 		b.BackgroundColor3 = Theme.surface
 		b.TextColor3 = Theme.text
 		b.Font = Theme.font
@@ -238,6 +259,7 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 end
 
 ModMenu.UI = ModMenu.UI or {}
+ModMenu.UI.toggleSync = ModMenu.UI.toggleSync or {}
 ModMenu.UI.Components = {
 	button = button,
 	toggle = toggle,

@@ -58,15 +58,35 @@ ModMenu.Config = {
 			ModMenu.State.savedPosition = Vector3.new(decoded.savedPosition.x or 0, decoded.savedPosition.y or 0, decoded.savedPosition.z or 0)
 			ModMenu.State.savedPositionName = decoded.savedPositionName
 		end
+		if type(decoded.waypoints) == "table" then
+			table.clear(ModMenu.State.waypoints)
+			for _, wp in decoded.waypoints do
+				if type(wp) == "table" and type(wp.position) == "table" then
+					local pos = wp.position
+					table.insert(ModMenu.State.waypoints, {
+						name = type(wp.name) == "string" and wp.name or ("WP " .. tostring(#ModMenu.State.waypoints + 1)),
+						position = Vector3.new(pos.x or 0, pos.y or 0, pos.z or 0),
+					})
+				end
+			end
+		end
 	end,
 	save = function()
 		local accent = ModMenu.State.settings.accent
+		local openKey = ModMenu.State.settings.openKey
+		local waypoints = {}
+		for _, wp in ModMenu.State.waypoints do
+			waypoints[#waypoints + 1] = {
+				name = wp.name,
+				position = { x = wp.position.X, y = wp.position.Y, z = wp.position.Z },
+			}
+		end
 		local data = {
-			openKey = tostring(ModMenu.State.settings.openKey),
+			openKey = typeof(openKey) == "EnumItem" and openKey.Name or tostring(openKey),
 			accent = { r = accent.R, g = accent.G, b = accent.B },
 			toggles = ModMenu.State.toggles,
 			numbers = ModMenu.State.numbers,
-			waypoints = ModMenu.State.waypoints,
+			waypoints = waypoints,
 			savedPosition = ModMenu.State.savedPosition and {
 				x = ModMenu.State.savedPosition.X,
 				y = ModMenu.State.savedPosition.Y,

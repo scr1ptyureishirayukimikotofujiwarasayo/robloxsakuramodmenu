@@ -64,7 +64,10 @@ ModMenu.Features.Visual.esp = function(enabled: boolean)
 		if p ~= S.Players.LocalPlayer and p.Character then applyTo(p.Character) end
 	end
 	local conn = S.Players.PlayerAdded:Connect(function(p)
-		p.CharacterAdded:Connect(function(c) if ModMenu.State.toggles["visual.esp"] then applyTo(c) end end)
+		local cconn = p.CharacterAdded:Connect(function(c)
+			if ModMenu.State.toggles["visual.esp"] then applyTo(c) end
+		end)
+		table.insert(ModMenu.State.getConnections(id), cconn)
 	end)
 	table.insert(ModMenu.State.getConnections(id), conn)
 	local conn2 = RunService.Heartbeat:Connect(function()

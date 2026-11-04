@@ -40,35 +40,52 @@ local function fetchCustomImage(url: string): string?
 	return nil
 end
 
-local parentGui = nil
-if gethui then
-	local ok, gui = pcall(gethui)
-	if ok and gui then
-		parentGui = gui
+-- Always create our own ScreenGui. gethui() and syn.protect_gui() return a
+-- *container* (CoreGui or a hidden folder), not a ScreenGui, so ScreenGui-only
+-- properties must never be set on their result.
+local function makeScreenGui(): ScreenGui
+	local g = Instance.new("ScreenGui")
+	g.Name = "ModMenu"
+	g.ResetOnSpawn = false
+	g.DisplayOrder = 2147483647
+	return g
+end
+
+local function preferredContainer(): Instance?
+	if gethui then
+		local ok, container = pcall(gethui)
+		if ok and typeof(container) == "Instance" then
+			return container
+		end
+	end
+	local okCore, coreGui = pcall(function() return game:GetService("CoreGui") end)
+	if okCore and coreGui then
+		return coreGui
+	end
+	return nil
+end
+
+local parentGui = makeScreenGui()
+if syn_protect_gui then
+	pcall(syn_protect_gui, parentGui)
+end
+local container = preferredContainer()
+local parented = false
+if container then
+	parented = pcall(function() parentGui.Parent = container end)
+end
+if not parented then
+	local lp = ModMenu.Services.Players.LocalPlayer
+	local pg = lp and lp:FindFirstChild("PlayerGui")
+	if not pg and lp then
+		pg = lp:WaitForChild("PlayerGui", 10)
+	end
+	if pg then
+		parented = pcall(function() parentGui.Parent = pg end)
 	end
 end
-if (not parentGui) and syn_protect_gui then
-	local g = Instance.new("ScreenGui")
-	g.Name = "ModMenu"
-	g.ResetOnSpawn = false
-	g.DisplayOrder = 2147483647
-	pcall(syn_protect_gui, g)
-	g.Parent = (ModMenu.Services.Players.LocalPlayer:FindFirstChild("PlayerGui") or game:GetService("CoreGui"))
-	parentGui = g
-elseif not parentGui then
-	local g = Instance.new("ScreenGui")
-	g.Name = "ModMenu"
-	g.ResetOnSpawn = false
-	g.DisplayOrder = 2147483647
-	pcall(function() g.Parent = game:GetService("CoreGui") end)
-	parentGui = g
-end
-if not parentGui or not parentGui:IsA("Instance") then
-	local g = Instance.new("ScreenGui")
-	g.Name = "ModMenu"
-	g.ResetOnSpawn = false
-	g.Parent = ModMenu.Services.Players.LocalPlayer:WaitForChild("PlayerGui")
-	parentGui = g
+if not parented then
+	warn("[ModMenu] could not parent UI; menu will not be visible")
 end
 
 ModMenu.Menu = { ScreenGui = parentGui, Open = false }
