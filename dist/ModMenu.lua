@@ -610,7 +610,7 @@ local IMAGE_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotof
 -- For a background that renders on every executor, upload picture.png to
 -- Roblox once (Creator Dashboard > Development Items > Images) and set its
 -- numeric id here. Leave empty to use the downloaded custom asset instead.
-local BACKGROUND_ASSET_ID = "114078675465862"
+local BACKGROUND_ASSET_ID = "86915755447721"
 
 local tempPath = "ModMenuBackground.png"
 
@@ -794,9 +794,9 @@ local backgroundScrim = Instance.new("Frame")
 backgroundScrim.Name = "BackgroundScrim"
 backgroundScrim.Size = UDim2.fromScale(1, 1)
 backgroundScrim.BackgroundColor3 = Color3.new(0, 0, 0)
-backgroundScrim.BackgroundTransparency = 0.8
+backgroundScrim.BackgroundTransparency = 0.5
 backgroundScrim.BorderSizePixel = 0
-backgroundScrim.ZIndex = 0
+backgroundScrim.ZIndex = 1
 backgroundScrim.Parent = root
 
 task.spawn(function()
