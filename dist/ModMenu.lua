@@ -607,6 +607,11 @@ local Theme = ModMenu.Theme
 local C = ModMenu.UI.Components
 local IMAGE_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/refs/heads/main/picture.png"
 
+-- For a background that renders on every executor, upload picture.png to
+-- Roblox once (Creator Dashboard > Development Items > Images) and set its
+-- numeric id here. Leave empty to use the downloaded custom asset instead.
+local BACKGROUND_ASSET_ID = ""
+
 local tempPath = "ModMenuBackground.png"
 
 -- ImageLabel.Image can only render rbxassetid:// content ids, and executor
@@ -725,6 +730,30 @@ if not parented then
 	warn("[ModMenu] could not parent UI; menu will not be visible")
 end
 
+-- Destroy leftovers from previous executions so re-running never stacks
+-- duplicate menus on top of each other.
+do
+	local stale = {}
+	local function collect(c: Instance?)
+		if not c then return end
+		for _, child in c:GetChildren() do
+			if child ~= parentGui and child:IsA("ScreenGui") and child.Name == "ModMenu" then
+				table.insert(stale, child)
+			end
+		end
+	end
+	collect(container)
+	if not parented then
+		local lp = ModMenu.Services.Players.LocalPlayer
+		if lp and lp:FindFirstChild("PlayerGui") then
+			collect(lp.PlayerGui)
+		end
+	end
+	for _, gui in stale do
+		pcall(function() gui:Destroy() end)
+	end
+end
+
 ModMenu.Menu = { ScreenGui = parentGui, Open = false }
 
 local screen = ModMenu.Menu.ScreenGui
@@ -744,11 +773,23 @@ root.Parent = screen
 ModMenu.Menu.Root = root
 Theme.stroke(root, Theme.accent(), 1.5)
 
--- NOTE: ImageLabel.Image cannot render raw https:// URLs, and executor
--- custom-asset ids (rbxasset://ExtraContent/...) do not render in GUIs on
--- every executor (verified on Real). The background image is therefore
--- drawn with Drawing.new("Image") underneath the GUI layer; only the dim
--- scrim stays as a GUI element.
+-- NOTE: ImageLabel.Image cannot render raw https:// URLs. On executors that
+-- support GUI custom assets the downloaded file can be used through
+-- getcustomasset; on others (verified on Real: PreloadAsync reports Success
+-- but IsLoaded never flips and nothing draws) such ids never render, so the
+-- only universally reliable route is a real uploaded rbxassetid set in
+-- BACKGROUND_ASSET_ID above. A Drawing image cannot serve as the background
+-- because the Drawing layer renders on top of every ScreenGui.
+local backgroundImage = Instance.new("ImageLabel")
+backgroundImage.Name = "BackgroundImage"
+backgroundImage.Size = UDim2.fromScale(1, 1)
+backgroundImage.Position = UDim2.fromOffset(0, 0)
+backgroundImage.BackgroundTransparency = 1
+backgroundImage.BorderSizePixel = 0
+backgroundImage.ScaleType = Enum.ScaleType.Crop
+backgroundImage.ZIndex = 0
+backgroundImage.Parent = root
+
 local backgroundScrim = Instance.new("Frame")
 backgroundScrim.Name = "BackgroundScrim"
 backgroundScrim.Size = UDim2.fromScale(1, 1)
@@ -759,39 +800,33 @@ backgroundScrim.ZIndex = 0
 backgroundScrim.Parent = root
 
 task.spawn(function()
-	local bytes = fetchCustomImageBytes(IMAGE_URL)
-	if not bytes then
+	local image = ""
+	if BACKGROUND_ASSET_ID ~= "" then
+		image = "rbxassetid://" .. BACKGROUND_ASSET_ID
+	else
+		local custom = fetchCustomImage(IMAGE_URL)
+		if custom then
+			image = custom
+		end
+	end
+	if image == "" then
 		backgroundScrim.Visible = false
 		warn("[ModMenu] bg: no image available; using plain background")
 		return
 	end
-	-- The Drawing layer renders beneath every ScreenGui, which is exactly
-	-- where a menu background belongs. Sync it to the root frame every frame
-	-- so it follows resizes, drags and show/hide toggling.
-	local drawing = Drawing.new("Image")
-	drawing.Data = bytes
-	drawing.Visible = false
-	root.BackgroundTransparency = 1
-	local RunService = game:GetService("RunService")
-	local GuiService = game:GetService("GuiService")
-	local conn = RunService.RenderStepped:Connect(function()
-		drawing.Position = root.AbsolutePosition + Vector2.new(0, GuiService:GetGuiInset().Y)
-		drawing.Size = root.AbsoluteSize
-		drawing.Visible = root.Visible
-	end)
-	ModMenu.Menu.BackgroundDrawing = drawing
-	ModMenu.Menu.BackgroundConn = conn
-	warn("[ModMenu] bg: Drawing background applied")
-	-- Under live-reload, tear the drawing and sync loop down when this run
-	-- is replaced, so a re-execution never stacks duplicate draws.
-	pcall(function()
-		if STATE and type(STATE) == "table" and STATE.onCleanup then
-			STATE.onCleanup(function()
-				conn:Disconnect()
-				drawing:Remove()
-			end)
-		end
-	end)
+	backgroundImage.Image = image
+	-- Verify it actually renders; on executors whose custom-asset ids never
+	-- load (verified on Real), fall back to the plain theme background.
+	local waited = 0
+	while not backgroundImage.IsLoaded and waited < 8 do
+		task.wait(1)
+		waited += 1
+	end
+	if not backgroundImage.IsLoaded then
+		backgroundImage.Image = ""
+		backgroundScrim.Visible = false
+		warn("[ModMenu] bg: image did not render after " .. waited .. "s; using plain background")
+	end
 end)
 
 local topBar = Instance.new("Frame")
