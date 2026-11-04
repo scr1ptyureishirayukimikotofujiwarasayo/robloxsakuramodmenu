@@ -36,6 +36,7 @@ run("src/features/utility.lua")
 run("src/features/teleport.lua")
 run("src/features/world.lua")
 run("src/features/misc.lua")
+run("src/features/dex.lua")
 run("src/init.lua")
 
 return _G.ModMenu
