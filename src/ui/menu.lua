@@ -8,29 +8,29 @@ local IMAGE_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotof
 
 local tempPath = "ModMenuBackground.png"
 
--- ImageLabel.Image can only render rbxassetid:// / rbxasset:// content ids,
--- never raw https:// URLs. The only reliable route to show a downloaded
--- picture is download -> writefile -> getcustomasset. If a previous run
--- already wrote the file we reuse it instead of failing while offline.
-local function cachedImageAsset(): string?
-	if not (isfile and getcustomasset) then
+-- ImageLabel.Image can only render rbxassetid:// content ids, and executor
+-- getcustomasset ids (rbxasset://ExtraContent/...) do not render in GUIs at
+-- all on some executors (verified on Real: PreloadAsync reports Success but
+-- IsLoaded never flips and nothing draws). The one path that demonstrably
+-- renders is Drawing.new("Image") with the raw bytes in its Data property.
+-- So we download the bytes, cache them, and hand them to a Drawing-based
+-- background; the custom-asset route is never used.
+local function cachedImageBytes(): string?
+	if not isfile or not readfile then
 		return nil
 	end
 	local okHas, has = pcall(isfile, tempPath)
 	if not okHas or not has then
 		return nil
 	end
-	local ok, asset = pcall(getcustomasset, tempPath)
-	if ok and type(asset) == "string" and asset ~= "" then
-		return asset
+	local ok, data = pcall(readfile, tempPath)
+	if ok and type(data) == "string" and data:sub(1, 8) == "\137PNG\r\n\26\n" then
+		return data
 	end
 	return nil
 end
 
-local function fetchCustomImage(url: string): string?
-	if not (writefile and getcustomasset) then
-		return nil
-	end
+local function fetchCustomImageBytes(url: string): string?
 	-- Download the image bytes. game:HttpGet is present on every executor and
 	-- returns the body as a string; keep httprequest as a fallback for
 	-- executors whose HttpGet is restricted, and accept more response shapes.
@@ -55,32 +55,25 @@ local function fetchCustomImage(url: string): string?
 			end
 		end
 	end
-	-- Only write genuine PNG data so a failed or intercepted download can
+	-- Only keep genuine PNG data so a failed or intercepted download can
 	-- never clobber a good cached file.
 	if type(body) ~= "string" or body == "" or body:sub(1, 8) ~= "\137PNG\r\n\26\n" then
 		warn("[ModMenu] bg: download invalid or failed (HttpGet ok="
 			.. tostring(okGet) .. ", got=" .. type(got) .. "); trying cache")
-		return cachedImageAsset()
+		return cachedImageBytes()
 	end
 	warn("[ModMenu] bg: downloaded " .. #body .. " bytes")
-	local okWrite, writeErr = pcall(function()
-		-- Some executors only accept (path, data); the extra binary-mode flag
-		-- can make the whole call error out, so try it first, then plain.
-		local ok = pcall(writefile, tempPath, body, true)
-		if not ok then
-			writefile(tempPath, body)
-		end
-	end)
-	if not okWrite then
-		warn("[ModMenu] bg: writefile failed: " .. tostring(writeErr))
-		return cachedImageAsset()
+	if writefile then
+		pcall(function()
+			-- Some executors only accept (path, data); the extra binary-mode flag
+			-- can make the whole call error out, so try it first, then plain.
+			local ok = pcall(writefile, tempPath, body, true)
+			if not ok then
+				writefile(tempPath, body)
+			end
+		end)
 	end
-	local ok, asset = pcall(getcustomasset, tempPath)
-	if ok and type(asset) == "string" and asset ~= "" then
-		return asset
-	end
-	warn("[ModMenu] bg: getcustomasset failed: " .. tostring(ok and asset or asset))
-	return cachedImageAsset()
+	return body
 end
 
 -- Always create our own ScreenGui. gethui() and syn.protect_gui() return a
@@ -150,18 +143,11 @@ root.Parent = screen
 ModMenu.Menu.Root = root
 Theme.stroke(root, Theme.accent(), 1.5)
 
-local backgroundImage = Instance.new("ImageLabel")
-backgroundImage.Name = "BackgroundImage"
-backgroundImage.Size = UDim2.fromScale(1, 1)
-backgroundImage.Position = UDim2.fromOffset(0, 0)
-backgroundImage.BackgroundTransparency = 1
-backgroundImage.BorderSizePixel = 0
--- NOTE: ImageLabel.Image cannot render raw https:// URLs, so the image is
--- applied through getcustomasset below, never assigned here.
-backgroundImage.ScaleType = Enum.ScaleType.Crop
-backgroundImage.ZIndex = 0
-backgroundImage.Parent = root
-
+-- NOTE: ImageLabel.Image cannot render raw https:// URLs, and executor
+-- custom-asset ids (rbxasset://ExtraContent/...) do not render in GUIs on
+-- every executor (verified on Real). The background image is therefore
+-- drawn with Drawing.new("Image") underneath the GUI layer; only the dim
+-- scrim stays as a GUI element.
 local backgroundScrim = Instance.new("Frame")
 backgroundScrim.Name = "BackgroundScrim"
 backgroundScrim.Size = UDim2.fromScale(1, 1)
@@ -172,28 +158,39 @@ backgroundScrim.ZIndex = 0
 backgroundScrim.Parent = root
 
 task.spawn(function()
-	local custom = fetchCustomImage(IMAGE_URL)
-	if custom then
-		backgroundImage.Image = custom
-		warn("[ModMenu] bg: custom asset applied")
-	end
-	-- Graceful fallback: with no image to render, hide the scrim so the theme
-	-- background color shows cleanly and text stays readable. Large PNGs can
-	-- take a while to decode, so poll patiently before giving up.
-	if not custom then
+	local bytes = fetchCustomImageBytes(IMAGE_URL)
+	if not bytes then
 		backgroundScrim.Visible = false
+		warn("[ModMenu] bg: no image available; using plain background")
 		return
 	end
-	local waited = 0
-	while not backgroundImage.IsLoaded and waited < 30 do
-		task.wait(2)
-		waited += 2
-	end
-	if not backgroundImage.IsLoaded then
-		backgroundImage.Image = ""
-		backgroundScrim.Visible = false
-		warn("[ModMenu] bg: image did not load after " .. waited .. "s; using plain background")
-	end
+	-- The Drawing layer renders beneath every ScreenGui, which is exactly
+	-- where a menu background belongs. Sync it to the root frame every frame
+	-- so it follows resizes, drags and show/hide toggling.
+	local drawing = Drawing.new("Image")
+	drawing.Data = bytes
+	drawing.Visible = false
+	root.BackgroundTransparency = 1
+	local RunService = game:GetService("RunService")
+	local GuiService = game:GetService("GuiService")
+	local conn = RunService.RenderStepped:Connect(function()
+		drawing.Position = root.AbsolutePosition + Vector2.new(0, GuiService:GetGuiInset().Y)
+		drawing.Size = root.AbsoluteSize
+		drawing.Visible = root.Visible
+	end)
+	ModMenu.Menu.BackgroundDrawing = drawing
+	ModMenu.Menu.BackgroundConn = conn
+	warn("[ModMenu] bg: Drawing background applied")
+	-- Under live-reload, tear the drawing and sync loop down when this run
+	-- is replaced, so a re-execution never stacks duplicate draws.
+	pcall(function()
+		if STATE and type(STATE) == "table" and STATE.onCleanup then
+			STATE.onCleanup(function()
+				conn:Disconnect()
+				drawing:Remove()
+			end)
+		end
+	end)
 end)
 
 local topBar = Instance.new("Frame")
