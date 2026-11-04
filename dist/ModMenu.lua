@@ -1,6 +1,6 @@
 --!strict
 -- Mod Menu (client) - generated from local sources
--- Version: 0.2.7
+-- Version: 0.2.8
 
 -- ===== src\core\compat.luau =====
 --!strict
@@ -636,16 +636,29 @@ local function fetchCustomImage(url: string): string?
 		end
 	end
 	if type(body) ~= "string" or body == "" then
+		warn("[ModMenu] bg: download failed (HttpGet ok="
+			.. tostring(okGet) .. ", got=" .. type(got) .. ")")
 		return nil
 	end
+	warn("[ModMenu] bg: downloaded " .. #body .. " bytes")
 	local tempPath = "ModMenuBackground.png"
-	if not pcall(writefile, tempPath, body, true) then
+	local okWrite, writeErr = pcall(function()
+		-- Some executors only accept (path, data); the extra binary-mode flag
+		-- can make the whole call error out, so try it first, then plain.
+		local ok = pcall(writefile, tempPath, body, true)
+		if not ok then
+			writefile(tempPath, body)
+		end
+	end)
+	if not okWrite then
+		warn("[ModMenu] bg: writefile failed: " .. tostring(writeErr))
 		return nil
 	end
 	local ok, asset = pcall(getcustomasset, tempPath)
 	if ok and type(asset) == "string" and asset ~= "" then
 		return asset
 	end
+	warn("[ModMenu] bg: getcustomasset failed: " .. tostring(ok and asset or asset))
 	return nil
 end
 
@@ -740,6 +753,7 @@ task.spawn(function()
 	local custom = fetchCustomImage(IMAGE_URL)
 	if custom then
 		backgroundImage.Image = custom
+		warn("[ModMenu] bg: custom asset applied")
 	end
 	-- Graceful fallback: if the image never loads (the executor can't render
 	-- the raw https URL and no custom asset could be produced), blank it so
@@ -754,6 +768,7 @@ task.spawn(function()
 	if not backgroundImage.IsLoaded then
 		backgroundImage.Image = ""
 		backgroundScrim.Visible = false
+		warn("[ModMenu] bg: image did not load after " .. waited .. "s; using plain background")
 	end
 end)
 
