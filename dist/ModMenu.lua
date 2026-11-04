@@ -610,7 +610,7 @@ local IMAGE_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotof
 -- For a background that renders on every executor, upload picture.png to
 -- Roblox once (Creator Dashboard > Development Items > Images) and set its
 -- numeric id here. Leave empty to use the downloaded custom asset instead.
-local BACKGROUND_ASSET_ID = ""
+local BACKGROUND_ASSET_ID = "114078675465862"
 
 local tempPath = "ModMenuBackground.png"
 
