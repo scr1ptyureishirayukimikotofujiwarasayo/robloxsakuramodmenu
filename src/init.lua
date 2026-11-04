@@ -17,6 +17,7 @@ do
 	info.TextSize = 13
 	info.Text = "Executor client mod menu. Features are local to your client unless the game exposes server remotes. Use responsibly."
 	info.Parent = p
+	Theme.textStroke(info, 0.65)
 	C.section(p, "Quick Actions")
 	C.button(p, "Copy Position", function() ModMenu.Features.Teleport.copyPosition() end)
 	C.toggle(p, "fullbright", "Fullbright", false, function(v) ModMenu.Features.Visual.fullbright(v) end)

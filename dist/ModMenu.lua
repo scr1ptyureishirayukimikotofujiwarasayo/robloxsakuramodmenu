@@ -1,6 +1,6 @@
 --!strict
 -- Mod Menu (client) - generated from local sources
--- Version: 0.2.1
+-- Version: 0.2.2
 
 -- ===== src\core\compat.luau =====
 --!strict
@@ -263,8 +263,14 @@ ModMenu.Theme = {
 	background = Color3.fromRGB(18, 18, 22),
 	panel = Color3.fromRGB(30, 30, 38),
 	surface = Color3.fromRGB(42, 42, 54),
-	text = Color3.fromRGB(235, 235, 240),
-	muted = Color3.fromRGB(150, 150, 165),
+	text = Color3.fromRGB(250, 250, 255),
+	textPrimary = Color3.fromRGB(250, 250, 255),
+	textSecondary = Color3.fromRGB(205, 205, 220),
+	textDisabled = Color3.fromRGB(140, 140, 155),
+	accentText = Color3.fromRGB(255, 255, 255),
+	successText = Color3.fromRGB(120, 235, 165),
+	dangerText = Color3.fromRGB(255, 150, 160),
+	muted = Color3.fromRGB(190, 190, 205),
 	success = Color3.fromRGB(80, 200, 120),
 	danger = Color3.fromRGB(220, 70, 80),
 }
@@ -287,6 +293,14 @@ end
 
 ModMenu.Theme.corner = corner
 ModMenu.Theme.stroke = stroke
+ModMenu.Theme.textStroke = function(instance: Instance, transparency: number?)
+	local s = Instance.new("UIStroke")
+	s.Color = Color3.new(0, 0, 0)
+	s.Thickness = 1.1
+	s.Transparency = transparency or 0.55
+	s.Parent = instance
+	return s
+end
 ModMenu.Theme.accent = function()
 	return ModMenu.State.settings.accent
 end
@@ -309,6 +323,7 @@ local function button(parent: Instance, text: string, callback: (() -> ())?): Te
 	btn.AutoButtonColor = true
 	btn.BorderSizePixel = 0
 	Theme.corner(btn, 6)
+	Theme.textStroke(btn, 0.6)
 	btn.Parent = parent
 	if callback then
 		btn.MouseButton1Click:Connect(function()
@@ -333,8 +348,7 @@ local function toggle(parent: Instance, id: string, label: string, initial: bool
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
 	lbl.Text = label
 	lbl.Parent = row
-
-	local savedToggle = ModMenu.State.toggles[id]
+	Theme.textStroke(lbl, 0.65)
 	local state = if savedToggle ~= nil then savedToggle else (initial or false)
 	local btn = Instance.new("TextButton")
 	btn.Size = UDim2.new(0, 52, 0, 22)
@@ -344,6 +358,7 @@ local function toggle(parent: Instance, id: string, label: string, initial: bool
 	btn.TextSize = 12
 	btn.AutoButtonColor = true
 	Theme.corner(btn, 11)
+	Theme.textStroke(btn, 0.6)
 	btn.Parent = row
 
 	local function refresh()
@@ -386,6 +401,7 @@ local function slider(parent: Instance, id: string, label: string, min: number, 
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
 	lbl.Text = label .. ": " .. tostring(initial or min)
 	lbl.Parent = row
+	Theme.textStroke(lbl, 0.65)
 
 	local bar = Instance.new("Frame")
 	bar.Size = UDim2.new(1, 0, 0, 8)
@@ -446,6 +462,7 @@ local function section(parent: Instance, text: string)
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
 	lbl.Text = string.upper(text)
 	lbl.Parent = parent
+	Theme.textStroke(lbl, 0.7)
 	return lbl
 end
 
@@ -464,6 +481,7 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
 	lbl.Text = label
 	lbl.Parent = row
+	Theme.textStroke(lbl, 0.65)
 
 	local btn = Instance.new("TextButton")
 	btn.Size = UDim2.new(0.6, 0, 1, -4)
@@ -474,6 +492,7 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 	btn.TextSize = 13
 	btn.BorderSizePixel = 0
 	Theme.corner(btn, 6)
+	Theme.textStroke(btn, 0.6)
 	btn.Parent = row
 
 	local savedString = ModMenu.State.strings[id]
@@ -502,6 +521,7 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 		b.Text = item
 		b.BorderSizePixel = 0
 		b.Parent = list
+		Theme.textStroke(b, 0.6)
 		b.MouseButton1Click:Connect(function()
 			selected = item
 			btn.Text = selected
@@ -645,6 +665,15 @@ task.spawn(function()
 end)
 backgroundImage.Parent = root
 
+local backgroundScrim = Instance.new("Frame")
+backgroundScrim.Name = "BackgroundScrim"
+backgroundScrim.Size = UDim2.fromScale(1, 1)
+backgroundScrim.BackgroundColor3 = Color3.new(0, 0, 0)
+backgroundScrim.BackgroundTransparency = 0.35
+backgroundScrim.BorderSizePixel = 0
+backgroundScrim.ZIndex = 0
+backgroundScrim.Parent = root
+
 local topBar = Instance.new("Frame")
 topBar.Size = UDim2.new(1, 0, 0, 30)
 topBar.BackgroundColor3 = Theme.panel
@@ -663,6 +692,7 @@ title.Font = Theme.font
 title.TextSize = Theme.titleText
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Parent = topBar
+Theme.textStroke(title, 0.6)
 
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 24, 0, 24)
@@ -766,6 +796,7 @@ for i, cat in categories do
 	btn.BorderSizePixel = 0
 	Theme.corner(btn, 6)
 	btn.Parent = sidebar
+	Theme.textStroke(btn, 0.55)
 	ModMenu.Menu.Buttons[cat.id] = btn
 	btn.MouseButton1Click:Connect(function() switchTab(cat.id) end)
 	makePanel(cat.id)
@@ -782,6 +813,7 @@ floating.TextSize = 16
 floating.Visible = false
 floating.Parent = screen
 Theme.corner(floating, 22)
+Theme.textStroke(floating, 0.45)
 ModMenu.Menu.Floating = floating
 
 local dragging = false
@@ -1531,6 +1563,7 @@ do
 	info.TextSize = 13
 	info.Text = "Executor client mod menu. Features are local to your client unless the game exposes server remotes. Use responsibly."
 	info.Parent = p
+	Theme.textStroke(info, 0.65)
 	C.section(p, "Quick Actions")
 	C.button(p, "Copy Position", function() ModMenu.Features.Teleport.copyPosition() end)
 	C.toggle(p, "fullbright", "Fullbright", false, function(v) ModMenu.Features.Visual.fullbright(v) end)

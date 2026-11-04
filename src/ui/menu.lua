@@ -107,6 +107,15 @@ task.spawn(function()
 end)
 backgroundImage.Parent = root
 
+local backgroundScrim = Instance.new("Frame")
+backgroundScrim.Name = "BackgroundScrim"
+backgroundScrim.Size = UDim2.fromScale(1, 1)
+backgroundScrim.BackgroundColor3 = Color3.new(0, 0, 0)
+backgroundScrim.BackgroundTransparency = 0.35
+backgroundScrim.BorderSizePixel = 0
+backgroundScrim.ZIndex = 0
+backgroundScrim.Parent = root
+
 local topBar = Instance.new("Frame")
 topBar.Size = UDim2.new(1, 0, 0, 30)
 topBar.BackgroundColor3 = Theme.panel
@@ -125,6 +134,7 @@ title.Font = Theme.font
 title.TextSize = Theme.titleText
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Parent = topBar
+Theme.textStroke(title, 0.6)
 
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 24, 0, 24)
@@ -228,6 +238,7 @@ for i, cat in categories do
 	btn.BorderSizePixel = 0
 	Theme.corner(btn, 6)
 	btn.Parent = sidebar
+	Theme.textStroke(btn, 0.55)
 	ModMenu.Menu.Buttons[cat.id] = btn
 	btn.MouseButton1Click:Connect(function() switchTab(cat.id) end)
 	makePanel(cat.id)
@@ -244,6 +255,7 @@ floating.TextSize = 16
 floating.Visible = false
 floating.Parent = screen
 Theme.corner(floating, 22)
+Theme.textStroke(floating, 0.45)
 ModMenu.Menu.Floating = floating
 
 local dragging = false

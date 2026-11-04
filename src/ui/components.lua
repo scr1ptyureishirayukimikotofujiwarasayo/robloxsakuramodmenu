@@ -14,6 +14,7 @@ local function button(parent: Instance, text: string, callback: (() -> ())?): Te
 	btn.AutoButtonColor = true
 	btn.BorderSizePixel = 0
 	Theme.corner(btn, 6)
+	Theme.textStroke(btn, 0.6)
 	btn.Parent = parent
 	if callback then
 		btn.MouseButton1Click:Connect(function()
@@ -38,8 +39,7 @@ local function toggle(parent: Instance, id: string, label: string, initial: bool
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
 	lbl.Text = label
 	lbl.Parent = row
-
-	local savedToggle = ModMenu.State.toggles[id]
+	Theme.textStroke(lbl, 0.65)
 	local state = if savedToggle ~= nil then savedToggle else (initial or false)
 	local btn = Instance.new("TextButton")
 	btn.Size = UDim2.new(0, 52, 0, 22)
@@ -49,6 +49,7 @@ local function toggle(parent: Instance, id: string, label: string, initial: bool
 	btn.TextSize = 12
 	btn.AutoButtonColor = true
 	Theme.corner(btn, 11)
+	Theme.textStroke(btn, 0.6)
 	btn.Parent = row
 
 	local function refresh()
@@ -91,6 +92,7 @@ local function slider(parent: Instance, id: string, label: string, min: number, 
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
 	lbl.Text = label .. ": " .. tostring(initial or min)
 	lbl.Parent = row
+	Theme.textStroke(lbl, 0.65)
 
 	local bar = Instance.new("Frame")
 	bar.Size = UDim2.new(1, 0, 0, 8)
@@ -151,6 +153,7 @@ local function section(parent: Instance, text: string)
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
 	lbl.Text = string.upper(text)
 	lbl.Parent = parent
+	Theme.textStroke(lbl, 0.7)
 	return lbl
 end
 
@@ -169,6 +172,7 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
 	lbl.Text = label
 	lbl.Parent = row
+	Theme.textStroke(lbl, 0.65)
 
 	local btn = Instance.new("TextButton")
 	btn.Size = UDim2.new(0.6, 0, 1, -4)
@@ -179,6 +183,7 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 	btn.TextSize = 13
 	btn.BorderSizePixel = 0
 	Theme.corner(btn, 6)
+	Theme.textStroke(btn, 0.6)
 	btn.Parent = row
 
 	local savedString = ModMenu.State.strings[id]
@@ -207,6 +212,7 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 		b.Text = item
 		b.BorderSizePixel = 0
 		b.Parent = list
+		Theme.textStroke(b, 0.6)
 		b.MouseButton1Click:Connect(function()
 			selected = item
 			btn.Text = selected
