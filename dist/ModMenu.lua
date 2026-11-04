@@ -1,6 +1,6 @@
 --!strict
 -- Mod Menu (client) - generated from local sources
--- Version: 0.2.3
+-- Version: 0.2.4
 
 -- ===== src\core\compat.luau =====
 --!strict
@@ -349,6 +349,7 @@ local function toggle(parent: Instance, id: string, label: string, initial: bool
 	lbl.Text = label
 	lbl.Parent = row
 	Theme.textStroke(lbl, 0.65)
+	local savedToggle = ModMenu.State.toggles[id]
 	local state = if savedToggle ~= nil then savedToggle else (initial or false)
 	local btn = Instance.new("TextButton")
 	btn.Size = UDim2.new(0, 52, 0, 22)
@@ -1568,7 +1569,7 @@ do
 	info.TextSize = 13
 	info.Text = "Executor client mod menu. Features are local to your client unless the game exposes server remotes. Use responsibly."
 	info.Parent = p
-	Theme.textStroke(info, 0.65)
+	T.textStroke(info, 0.65)
 	C.section(p, "Quick Actions")
 	C.button(p, "Copy Position", function() ModMenu.Features.Teleport.copyPosition() end)
 	C.toggle(p, "fullbright", "Fullbright", false, function(v) ModMenu.Features.Visual.fullbright(v) end)

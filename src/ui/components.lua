@@ -40,6 +40,7 @@ local function toggle(parent: Instance, id: string, label: string, initial: bool
 	lbl.Text = label
 	lbl.Parent = row
 	Theme.textStroke(lbl, 0.65)
+	local savedToggle = ModMenu.State.toggles[id]
 	local state = if savedToggle ~= nil then savedToggle else (initial or false)
 	local btn = Instance.new("TextButton")
 	btn.Size = UDim2.new(0, 52, 0, 22)
