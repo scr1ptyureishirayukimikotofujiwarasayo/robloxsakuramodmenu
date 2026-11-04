@@ -1,6 +1,6 @@
 --!strict
 -- Mod Menu (client) - generated from local sources
--- Version: 0.2.6
+-- Version: 0.2.7
 
 -- ===== src\core\compat.luau =====
 --!strict
@@ -608,30 +608,38 @@ local C = ModMenu.UI.Components
 local IMAGE_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/refs/heads/main/picture.png"
 
 local function fetchCustomImage(url: string): string?
-	if not (httprequest and writefile and getcustomasset) then
+	if not (writefile and getcustomasset) then
 		return nil
 	end
-	local tempPath = "ModMenuBackground.png"
-	local okResponse, response = pcall(function()
-		return httprequest({
+	-- Download the image bytes. game:HttpGet is present on every executor and
+	-- returns the body as a string; keep httprequest as a fallback for
+	-- executors whose HttpGet is restricted, and accept more response shapes.
+	local body = nil
+	local okGet, got = pcall(function()
+		return game:HttpGet(url, true)
+	end)
+	if okGet and type(got) == "string" and got ~= "" then
+		body = got
+	elseif httprequest then
+		local okReq, response = pcall(httprequest, {
 			Url = url,
 			Method = "GET",
 		})
-	end)
-	if not okResponse or not response then
-		return nil
-	end
-	local body = nil
-	if type(response) == "string" then
-		body = response
-	elseif type(response) == "table" then
-		body = response.Body or response.body or response.bodyRaw or response.Response or response.data
+		if okReq and response then
+			if type(response) == "string" then
+				body = response
+			elseif type(response) == "table" then
+				body = response.Body or response.body or response.Content
+					or response.content or response.bodyRaw or response.Response
+					or response.data
+			end
+		end
 	end
 	if type(body) ~= "string" or body == "" then
 		return nil
 	end
-	local okWrite = pcall(writefile, tempPath, body, true)
-	if not okWrite then
+	local tempPath = "ModMenuBackground.png"
+	if not pcall(writefile, tempPath, body, true) then
 		return nil
 	end
 	local ok, asset = pcall(getcustomasset, tempPath)
@@ -717,22 +725,33 @@ backgroundImage.BorderSizePixel = 0
 backgroundImage.Image = IMAGE_URL
 backgroundImage.ScaleType = Enum.ScaleType.Crop
 backgroundImage.ZIndex = 0
-task.spawn(function()
-	local custom = fetchCustomImage(IMAGE_URL)
-	if custom then
-		backgroundImage.Image = custom
-	end
-end)
 backgroundImage.Parent = root
 
 local backgroundScrim = Instance.new("Frame")
 backgroundScrim.Name = "BackgroundScrim"
 backgroundScrim.Size = UDim2.fromScale(1, 1)
 backgroundScrim.BackgroundColor3 = Color3.new(0, 0, 0)
-backgroundScrim.BackgroundTransparency = 0.65
+backgroundScrim.BackgroundTransparency = 0.8
 backgroundScrim.BorderSizePixel = 0
 backgroundScrim.ZIndex = 0
 backgroundScrim.Parent = root
+
+task.spawn(function()
+	local custom = fetchCustomImage(IMAGE_URL)
+	if custom then
+		backgroundImage.Image = custom
+	end
+	-- Graceful fallback: if the image never loads (the executor can't render
+	-- the raw https URL and no custom asset could be produced), blank it so
+	-- the theme background color shows cleanly instead of a black box, and
+	-- drop the scrim so text stays readable.
+	task.delay(8, function()
+		if not backgroundImage.IsLoaded then
+			backgroundImage.Image = ""
+			backgroundScrim.Visible = false
+		end
+	end)
+end)
 
 local topBar = Instance.new("Frame")
 topBar.Size = UDim2.new(1, 0, 0, 30)
@@ -921,7 +940,7 @@ end)
 
 switchTab("home")
 setOpen(false)
-print("[ModMenu] UI built")
+-- UI built
 
 
 -- ===== src\features\movement.luau =====
@@ -1886,5 +1905,5 @@ do
 end
 
 ModMenu.Notify("Mod Menu", "Loaded. Press " .. ModMenu.State.settings.openKey.Name .. " to open.")
-print("[ModMenu] init complete")
+-- init complete
 

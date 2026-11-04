@@ -153,4 +153,4 @@ do
 end
 
 ModMenu.Notify("Mod Menu", "Loaded. Press " .. ModMenu.State.settings.openKey.Name .. " to open.")
-print("[ModMenu] init complete")
+-- init complete
