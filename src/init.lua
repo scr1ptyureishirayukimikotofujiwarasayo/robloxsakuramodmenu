@@ -151,3 +151,4 @@ do
 end
 
 ModMenu.Notify("Mod Menu", "Loaded. Press " .. tostring(ModMenu.State.settings.openKey) .. " to open.")
+print("[ModMenu] init complete")

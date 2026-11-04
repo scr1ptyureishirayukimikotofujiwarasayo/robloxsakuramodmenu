@@ -111,7 +111,7 @@ local backgroundScrim = Instance.new("Frame")
 backgroundScrim.Name = "BackgroundScrim"
 backgroundScrim.Size = UDim2.fromScale(1, 1)
 backgroundScrim.BackgroundColor3 = Color3.new(0, 0, 0)
-backgroundScrim.BackgroundTransparency = 0.35
+backgroundScrim.BackgroundTransparency = 0.65
 backgroundScrim.BorderSizePixel = 0
 backgroundScrim.ZIndex = 0
 backgroundScrim.Parent = root
@@ -121,6 +121,7 @@ topBar.Size = UDim2.new(1, 0, 0, 30)
 topBar.BackgroundColor3 = Theme.panel
 topBar.BackgroundTransparency = 0.3
 topBar.BorderSizePixel = 0
+topBar.ZIndex = 2
 Theme.corner(topBar, 10)
 topBar.Parent = root
 
@@ -166,6 +167,7 @@ sidebar.Position = UDim2.new(0, 0, 0, 30)
 sidebar.BackgroundColor3 = Theme.panel
 sidebar.BackgroundTransparency = 0.3
 sidebar.BorderSizePixel = 0
+sidebar.ZIndex = 2
 sidebar.Parent = root
 
 local contentArea = Instance.new("Frame")
@@ -173,6 +175,7 @@ contentArea.Size = UDim2.new(1, -120, 1, -30)
 contentArea.Position = UDim2.new(0, 120, 0, 30)
 contentArea.BackgroundTransparency = 1
 contentArea.ClipsDescendants = true
+contentArea.ZIndex = 2
 contentArea.Parent = root
 
 local categories = {
@@ -200,6 +203,7 @@ local function makePanel(id: string)
 	p.ScrollBarThickness = 6
 	p.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	p.Visible = false
+	p.ZIndex = 3
 	p.Parent = contentArea
 	local layout = Instance.new("UIListLayout")
 	layout.Padding = UDim.new(0, 4)
@@ -299,3 +303,4 @@ end)
 
 switchTab("home")
 setOpen(false)
+print("[ModMenu] UI built")
