@@ -205,7 +205,7 @@ task.spawn(function()
 	else
 		-- Download/validate/cache the bytes, then try a GUI custom asset id.
 		-- This renders on executors that support GUI custom assets; on others
-		-- the IsLoaded check below falls back to the plain background.
+		-- the plain theme background is used.
 		local bytes = fetchCustomImageBytes(IMAGE_URL)
 		if bytes and getcustomasset then
 			local ok, asset = pcall(getcustomasset, tempPath)
@@ -215,23 +215,22 @@ task.spawn(function()
 		end
 	end
 	if image == "" then
-		backgroundScrim.Visible = false
 		warn("[ModMenu] bg: no image available; using plain background")
 		return
 	end
 	backgroundImage.Image = image
-	-- Verify it actually renders; on executors whose custom-asset ids never
-	-- load (verified on Real), fall back to the plain theme background.
-	local waited = 0
-	while not backgroundImage.IsLoaded and waited < 8 do
-		task.wait(1)
-		waited += 1
-	end
-	if not backgroundImage.IsLoaded then
-		backgroundImage.Image = ""
-		backgroundScrim.Visible = false
-		warn("[ModMenu] bg: image did not render after " .. waited .. "s; using plain background")
-	end
+	-- We leave the image set rather than clearing it. On executors like Real,
+	-- ImageLabel.IsLoaded never reports true even for a valid rbxassetid, so
+	-- clearing it on timeout wipes a perfectly good background. Log only.
+	backgroundImage.Loaded:Connect(function()
+		-- image rendered
+	end)
+	task.spawn(function()
+		task.wait(8)
+		if not backgroundImage.IsLoaded then
+			warn("[ModMenu] bg: image not reported loaded (may still render)")
+		end
+	end)
 end)
 
 local topBar = Instance.new("Frame")
