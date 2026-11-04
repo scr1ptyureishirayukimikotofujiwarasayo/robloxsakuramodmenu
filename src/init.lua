@@ -139,6 +139,14 @@ do
 		end
 	end)
 	C.toggle(p, "misc.hideGuis", "Hide Other GUIs", false, function(v) ModMenu.Features.Misc.hideAllGuis(v) end)
+	C.section(p, "Background")
+	C.toggle(p, "settings.backgroundImage", "Background Image", true, function()
+		ModMenu.Menu.applyBackground()
+	end)
+	C.slider(p, "settings.bgBrightness", "Background Brightness", 0, 255, 80, function()
+		ModMenu.Menu.applyBackground()
+	end)
+	C.section(p, "Persistence")
 	C.button(p, "Save Settings", function()
 		pcall(ModMenu.Config.save)
 		ModMenu.Notify("Settings", "Saved")
@@ -152,5 +160,6 @@ do
 	end)
 end
 
+ModMenu.Menu.applyZOrder()
 ModMenu.Notify("Mod Menu", "Loaded. Press " .. ModMenu.State.settings.openKey.Name .. " to open.")
 -- init complete

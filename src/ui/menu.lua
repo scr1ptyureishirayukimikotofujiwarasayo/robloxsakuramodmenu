@@ -4,86 +4,60 @@ local S = ModMenu.Services
 local UserInputService = S.UserInputService
 local Theme = ModMenu.Theme
 local C = ModMenu.UI.Components
-local IMAGE_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/refs/heads/main/picture.png"
-
--- For a background that renders on every executor, upload picture.png to
--- Roblox once (Creator Dashboard > Development Items > Images) and set its
--- numeric id here. Leave empty to use the downloaded custom asset instead.
+-- Background picture resolution chain (verified approach):
+--   1) getcustomasset()/getsynasset() -> an rbxasset://ExtraContent/... content
+--      id rendered from a LOCAL file. This is the only path known to render
+--      in ImageLabels on the Real executor (rbxassetid decals never load
+--      there). The file must sit in the executor's workspace folder
+--      (Real: its Workspace folder). Missing file -> pcall error -> next step.
+--   2) BACKGROUND_ASSET_ID: an uploaded Decal id. Works on executors whose
+--      ImageLabel loads rbxassetid; a load timeout falls back to solid.
+--   3) Solid themed background.
+local BACKGROUND_FILE = "ModMenuBackground.png" -- file in the executor's workspace folder
 local BACKGROUND_ASSET_ID = "86915755447721"
 
-local tempPath = "ModMenuBackground.png"
-
--- ImageLabel.Image can only render rbxassetid:// content ids, and executor
--- getcustomasset ids (rbxasset://ExtraContent/...) do not render in GUIs at
--- all on some executors (verified on Real: PreloadAsync reports Success but
--- IsLoaded never flips and nothing draws). The one path that demonstrably
--- renders is Drawing.new("Image") with the raw bytes in its Data property.
--- So we download the bytes, cache them, and hand them to a Drawing-based
--- background; the custom-asset route is never used.
-local function cachedImageBytes(): string?
-	if not isfile or not readfile then
-		return nil
-	end
-	local okHas, has = pcall(isfile, tempPath)
-	if not okHas or not has then
-		return nil
-	end
-	local ok, data = pcall(readfile, tempPath)
-	if ok and type(data) == "string" and data:sub(1, 8) == "\137PNG\r\n\26\n" then
-		return data
-	end
-	return nil
-end
-
-local function fetchCustomImageBytes(url: string): string?
-	-- Download the image bytes. game:HttpGet is present on every executor and
-	-- returns the body as a string; keep httprequest as a fallback for
-	-- executors whose HttpGet is restricted, and accept more response shapes.
-	local body = nil
-	local okGet, got = pcall(function()
-		return game:HttpGet(url, true)
-	end)
-	if okGet and type(got) == "string" and got ~= "" then
-		body = got
-	elseif httprequest then
-		local okReq, response = pcall(httprequest, {
-			Url = url,
-			Method = "GET",
-		})
-		if okReq and response then
-			if type(response) == "string" then
-				body = response
-			elseif type(response) == "table" then
-				body = response.Body or response.body or response.Content
-					or response.content or response.bodyRaw or response.Response
-					or response.data
-			end
+-- Returns (content id or nil, source tag "custom" | "rbxassetid" | "none").
+local function resolveBackgroundImage(): (string?, string)
+	local custom = getcustomasset or getsynasset
+	if custom then
+		local ok, cid = pcall(custom, BACKGROUND_FILE)
+		if ok and type(cid) == "string" and cid ~= "" then
+			return cid, "custom"
 		end
 	end
-	-- Only keep genuine PNG data so a failed or intercepted download can
-	-- never clobber a good cached file.
-	if type(body) ~= "string" or body == "" or body:sub(1, 8) ~= "\137PNG\r\n\26\n" then
-		warn("[ModMenu] bg: download invalid or failed (HttpGet ok="
-			.. tostring(okGet) .. ", got=" .. type(got) .. "); trying cache")
-		return cachedImageBytes()
+	if BACKGROUND_ASSET_ID ~= "" then
+		return "rbxassetid://" .. BACKGROUND_ASSET_ID, "rbxassetid"
 	end
-	warn("[ModMenu] bg: downloaded " .. #body .. " bytes")
-	if writefile then
-		pcall(function()
-			-- Some executors only accept (path, data); the extra binary-mode flag
-			-- can make the whole call error out, so try it first, then plain.
-			local ok = pcall(writefile, tempPath, body, true)
-			if not ok then
-				writefile(tempPath, body)
-			end
-		end)
-	end
-	return body
+	return nil, "none"
 end
 
 -- Always create our own ScreenGui. gethui() and syn.protect_gui() return a
 -- *container* (CoreGui or a hidden folder), not a ScreenGui, so ScreenGui-only
 -- properties must never be set on their result.
+local function destroyExistingGui()
+	local containers = {}
+	local okCore, coreGui = pcall(function() return game:GetService("CoreGui") end)
+	if okCore and coreGui then table.insert(containers, coreGui) end
+	local lp = ModMenu.Services.Players.LocalPlayer
+	local pg = lp and lp:FindFirstChild("PlayerGui")
+	if pg then table.insert(containers, pg) end
+	for _, holder in containers do
+		for _, d in holder:GetDescendants() do
+			if d:IsA("ScreenGui") and d.Name == "ModMenu" then
+				pcall(function() d:Destroy() end)
+			end
+		end
+	end
+	-- Drop last run's global input listeners too, or every reload doubles them.
+	ModMenu.State.clearConnections("menu")
+end
+destroyExistingGui()
+
+local function trackConnection(conn: RBXScriptConnection)
+	table.insert(ModMenu.State.getConnections("menu"), conn)
+	return conn
+end
+
 local function makeScreenGui(): ScreenGui
 	local g = Instance.new("ScreenGui")
 	g.Name = "ModMenu"
@@ -129,28 +103,13 @@ if not parented then
 	warn("[ModMenu] could not parent UI; menu will not be visible")
 end
 
--- Destroy leftovers from previous executions so re-running never stacks
--- duplicate menus on top of each other.
-do
-	local stale = {}
-	local function collect(c: Instance?)
-		if not c then return end
-		for _, child in c:GetChildren() do
-			if child ~= parentGui and child:IsA("ScreenGui") and child.Name == "ModMenu" then
-				table.insert(stale, child)
-			end
-		end
-	end
-	collect(container)
-	if not parented then
-		local lp = ModMenu.Services.Players.LocalPlayer
-		if lp and lp:FindFirstChild("PlayerGui") then
-			collect(lp.PlayerGui)
-		end
-	end
-	for _, gui in stale do
-		pcall(function() gui:Destroy() end)
-	end
+-- live-reload tears down STATE on the next deploy; make that destroy the GUI
+-- as well so a reload never leaves a ghost window behind.
+if STATE and STATE.onCleanup then
+	STATE.onCleanup(function()
+		pcall(function() parentGui:Destroy() end)
+		ModMenu.State.clearConnections("menu")
+	end)
 end
 
 ModMenu.Menu = { ScreenGui = parentGui, Open = false }
@@ -166,19 +125,25 @@ root.Position = UDim2.new(0.5, -230, 0.5, -170)
 root.BackgroundColor3 = Theme.background
 root.BackgroundTransparency = 0
 root.BorderSizePixel = 0
+root.ZIndex = 0
+root.ClipsDescendants = true -- keeps the photo inside the rounded corners
 Theme.corner(root, 10)
 root.Visible = false
 root.Parent = screen
 ModMenu.Menu.Root = root
 Theme.stroke(root, Theme.accent(), 1.5)
 
--- NOTE: ImageLabel.Image cannot render raw https:// URLs. On executors that
--- support GUI custom assets the downloaded file can be used through
--- getcustomasset; on others (verified on Real: PreloadAsync reports Success
--- but IsLoaded never flips and nothing draws) such ids never render, so the
--- only universally reliable route is a real uploaded rbxassetid set in
--- BACKGROUND_ASSET_ID above. A Drawing image cannot serve as the background
--- because the Drawing layer renders on top of every ScreenGui.
+-- Rendering rules below were verified live on the Real executor:
+--  * ZIndex is sorted across the WHOLE ScreenGui, not per subtree. A photo
+--    behind the UI therefore needs ZIndex 0 AND a transparent root background,
+--    otherwise the opaque root frame paints straight over it (this is what
+--    made the menu look "black" even with a valid image).
+--  * Widgets default to ZIndex 1, so without an explicit pass they end up
+--    under their own panels. applyZOrder() assigns depth-based ZIndex values
+--    so children always draw above their parents. Call it again after adding
+--    new widgets (init.luau does this once the panels are populated).
+--  * Dim the photo with ImageColor3, never a black overlay frame: any overlay
+--    above ZIndex 0 also darkens the text sitting on top of it.
 local backgroundImage = Instance.new("ImageLabel")
 backgroundImage.Name = "BackgroundImage"
 backgroundImage.Size = UDim2.fromScale(1, 1)
@@ -187,62 +152,56 @@ backgroundImage.BackgroundTransparency = 1
 backgroundImage.BorderSizePixel = 0
 backgroundImage.ScaleType = Enum.ScaleType.Crop
 backgroundImage.ZIndex = 0
+backgroundImage.Visible = false
 backgroundImage.Parent = root
+ModMenu.Menu.BackgroundImage = backgroundImage
 
-local backgroundScrim = Instance.new("Frame")
-backgroundScrim.Name = "BackgroundScrim"
-backgroundScrim.Size = UDim2.fromScale(1, 1)
-backgroundScrim.BackgroundColor3 = Color3.new(0, 0, 0)
-backgroundScrim.BackgroundTransparency = 0.5
-backgroundScrim.BorderSizePixel = 0
-backgroundScrim.ZIndex = 1
-backgroundScrim.Parent = root
+local imageId, imageSource = resolveBackgroundImage()
+local hasImage = imageId ~= nil
 
-task.spawn(function()
-	local image = ""
-	if BACKGROUND_ASSET_ID ~= "" then
-		image = "rbxassetid://" .. BACKGROUND_ASSET_ID
-	else
-		-- Download/validate/cache the bytes, then try a GUI custom asset id.
-		-- This renders on executors that support GUI custom assets; on others
-		-- the plain theme background is used.
-		local bytes = fetchCustomImageBytes(IMAGE_URL)
-		if bytes and getcustomasset then
-			local ok, asset = pcall(getcustomasset, tempPath)
-			if ok and type(asset) == "string" and asset ~= "" then
-				image = asset
+local function applyBackground()
+	local on = hasImage and ModMenu.State.toggles["settings.backgroundImage"] ~= false
+	local brightness = math.clamp(ModMenu.State.numbers["settings.bgBrightness"] or 80, 0, 255)
+	backgroundImage.Visible = on
+	backgroundImage.ImageColor3 = Color3.fromRGB(brightness, brightness, brightness)
+	root.BackgroundTransparency = if on then 1 else 0
+end
+ModMenu.Menu.applyBackground = applyBackground
+
+if hasImage then
+	backgroundImage.Image = imageId
+	if imageSource == "rbxassetid" then
+		-- Uploaded decals may never load on some executors; fall back to solid.
+		task.spawn(function()
+			for _ = 1, 8 do
+				local ok, isLoaded = pcall(function()
+					return backgroundImage.IsLoaded
+				end)
+				if not ok then return end -- member missing: leave the image alone
+				if isLoaded then return end
+				task.wait(1)
+			end
+			hasImage = false
+			applyBackground()
+			warn(`[ModMenu] bg: rbxassetid {BACKGROUND_ASSET_ID} did not load; using solid background`)
+		end)
+	end
+end
+applyBackground()
+
+local function applyZOrder()
+	local function walk(inst: Instance, depth: number)
+		for _, child in inst:GetChildren() do
+			if child:IsA("GuiObject") then
+				child.ZIndex = if child == backgroundImage then 0 else depth
+				walk(child, depth + 1)
 			end
 		end
 	end
-	if image == "" then
-		backgroundScrim.BackgroundColor3 = Theme.background
-		backgroundScrim.BackgroundTransparency = 0.15
-		warn("[ModMenu] bg: no image available; using plain background")
-		return
-	end
-	backgroundImage.Image = image
-
-	-- Hybrid background. Some executors' ImageLabel renders rbxassetid and has a
-	-- Loaded event; others (Real) never render the image AND lack Loaded. Guard
-	-- everything, never error, and fall back to a solid accent-tinted background
-	-- so the menu is never pitch black.
-	local okLoad, hasLoadedEvt = pcall(function() return backgroundImage.Loaded end)
-	if okLoad and hasLoadedEvt then
-		pcall(function() backgroundImage.Loaded:Connect(function() end) end)
-	end
-	task.wait(6)
-	local okIs, isLoaded = pcall(function() return backgroundImage.IsLoaded end)
-	if okIs and not isLoaded then
-		backgroundImage.Image = ""
-		backgroundScrim.BackgroundColor3 = Theme.background
-		backgroundScrim.BackgroundTransparency = 0.15
-		warn("[ModMenu] bg: image did not load; using solid background")
-	elseif not okLoad or not hasLoadedEvt then
-		-- Real: no Loaded member. Keep the image set (harmless) but show a tint.
-		backgroundScrim.BackgroundColor3 = Theme.accent():Lerp(Color3.new(0, 0, 0), 0.7)
-		backgroundScrim.BackgroundTransparency = 0.25
-	end
-end)
+	root.ZIndex = 0
+	walk(root, 1)
+end
+ModMenu.Menu.applyZOrder = applyZOrder
 
 local topBar = Instance.new("Frame")
 topBar.Size = UDim2.new(1, 0, 0, 30)
@@ -392,24 +351,24 @@ ModMenu.Menu.Floating = floating
 
 local dragging = false
 local dragStart, startPos
-topBar.InputBegan:Connect(function(input)
+trackConnection(topBar.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		dragging = true
 		dragStart = input.Position
 		startPos = root.Position
 	end
-end)
-UserInputService.InputChanged:Connect(function(input)
+end))
+trackConnection(UserInputService.InputChanged:Connect(function(input)
 	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 		local delta = input.Position - dragStart
 		root.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 	end
-end)
-UserInputService.InputEnded:Connect(function(input)
+end))
+trackConnection(UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		dragging = false
 	end
-end)
+end))
 
 local function setOpen(value: boolean)
 	ModMenu.Menu.Open = value
@@ -422,13 +381,14 @@ closeBtn.MouseButton1Click:Connect(function() setOpen(false) end)
 minBtn.MouseButton1Click:Connect(function() setOpen(false) end)
 floating.MouseButton1Click:Connect(function() setOpen(true) end)
 
-S.UserInputService.InputBegan:Connect(function(input, gameProcessed)
+trackConnection(S.UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 	if input.KeyCode == ModMenu.State.settings.openKey then
 		setOpen(not ModMenu.Menu.Open)
 	end
-end)
+end))
 
 switchTab("home")
 setOpen(false)
+applyZOrder()
 -- UI built
