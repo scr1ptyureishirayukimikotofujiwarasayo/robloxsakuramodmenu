@@ -215,22 +215,33 @@ task.spawn(function()
 		end
 	end
 	if image == "" then
+		backgroundScrim.BackgroundColor3 = Theme.background
+		backgroundScrim.BackgroundTransparency = 0.15
 		warn("[ModMenu] bg: no image available; using plain background")
 		return
 	end
 	backgroundImage.Image = image
-	-- We leave the image set rather than clearing it. On executors like Real,
-	-- ImageLabel.IsLoaded never reports true even for a valid rbxassetid, so
-	-- clearing it on timeout wipes a perfectly good background. Log only.
-	backgroundImage.Loaded:Connect(function()
-		-- image rendered
-	end)
-	task.spawn(function()
-		task.wait(8)
-		if not backgroundImage.IsLoaded then
-			warn("[ModMenu] bg: image not reported loaded (may still render)")
-		end
-	end)
+
+	-- Hybrid background. Some executors' ImageLabel renders rbxassetid and has a
+	-- Loaded event; others (Real) never render the image AND lack Loaded. Guard
+	-- everything, never error, and fall back to a solid accent-tinted background
+	-- so the menu is never pitch black.
+	local okLoad, hasLoadedEvt = pcall(function() return backgroundImage.Loaded end)
+	if okLoad and hasLoadedEvt then
+		pcall(function() backgroundImage.Loaded:Connect(function() end) end)
+	end
+	task.wait(6)
+	local okIs, isLoaded = pcall(function() return backgroundImage.IsLoaded end)
+	if okIs and not isLoaded then
+		backgroundImage.Image = ""
+		backgroundScrim.BackgroundColor3 = Theme.background
+		backgroundScrim.BackgroundTransparency = 0.15
+		warn("[ModMenu] bg: image did not load; using solid background")
+	elseif not okLoad or not hasLoadedEvt then
+		-- Real: no Loaded member. Keep the image set (harmless) but show a tint.
+		backgroundScrim.BackgroundColor3 = Theme.accent():Lerp(Color3.new(0, 0, 0), 0.7)
+		backgroundScrim.BackgroundTransparency = 0.25
+	end
 end)
 
 local topBar = Instance.new("Frame")
