@@ -744,13 +744,17 @@ task.spawn(function()
 	-- Graceful fallback: if the image never loads (the executor can't render
 	-- the raw https URL and no custom asset could be produced), blank it so
 	-- the theme background color shows cleanly instead of a black box, and
-	-- drop the scrim so text stays readable.
-	task.delay(8, function()
-		if not backgroundImage.IsLoaded then
-			backgroundImage.Image = ""
-			backgroundScrim.Visible = false
-		end
-	end)
+	-- drop the scrim so text stays readable. Large PNGs can take a while to
+	-- decode, so poll patiently before giving up.
+	local waited = 0
+	while not backgroundImage.IsLoaded and waited < 30 do
+		task.wait(2)
+		waited += 2
+	end
+	if not backgroundImage.IsLoaded then
+		backgroundImage.Image = ""
+		backgroundScrim.Visible = false
+	end
 end)
 
 local topBar = Instance.new("Frame")
