@@ -1,6 +1,6 @@
 --!strict
 -- Mod Menu (client) - generated from local sources
--- Version: 0.2.4
+-- Version: 0.2.5
 
 -- ===== src\core\compat.luau =====
 --!strict
@@ -1491,9 +1491,25 @@ ModMenu.Features.Teleport.copyPosition = function()
 	end
 end
 
+local REJOIN_LOADSTRING = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/main/loader.lua"))()'
+local rejoinQueued = false
+
 ModMenu.Features.Teleport.rejoin = function()
+	-- Teleports create a fresh DataModel: queue the loader so the menu
+	-- rebuilds itself in the new session (needs executor teleport-queue support).
+	local queue = queue_on_teleport or (syn and syn.queue_on_teleport)
+	if queue and not rejoinQueued then
+		pcall(queue, REJOIN_LOADSTRING)
+		rejoinQueued = true
+	elseif not queue then
+		ModMenu.Notify("Rejoin", "This executor can't auto-run after rejoin. Enable auto-execute or rerun the script.")
+	end
 	pcall(function()
-		TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, S.Players.LocalPlayer)
+		if game.JobId ~= "" then
+			TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, S.Players.LocalPlayer)
+		else
+			TeleportService:Teleport(game.PlaceId, S.Players.LocalPlayer)
+		end
 	end)
 end
 
