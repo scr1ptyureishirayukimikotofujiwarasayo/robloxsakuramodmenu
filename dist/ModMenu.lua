@@ -804,9 +804,15 @@ task.spawn(function()
 	if BACKGROUND_ASSET_ID ~= "" then
 		image = "rbxassetid://" .. BACKGROUND_ASSET_ID
 	else
-		local custom = fetchCustomImage(IMAGE_URL)
-		if custom then
-			image = custom
+		-- Download/validate/cache the bytes, then try a GUI custom asset id.
+		-- This renders on executors that support GUI custom assets; on others
+		-- the IsLoaded check below falls back to the plain background.
+		local bytes = fetchCustomImageBytes(IMAGE_URL)
+		if bytes and getcustomasset then
+			local ok, asset = pcall(getcustomasset, tempPath)
+			if ok and type(asset) == "string" and asset ~= "" then
+				image = asset
+			end
 		end
 	end
 	if image == "" then
