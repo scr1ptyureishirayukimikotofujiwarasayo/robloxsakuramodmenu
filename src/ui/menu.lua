@@ -6,6 +6,27 @@ local Theme = ModMenu.Theme
 local C = ModMenu.UI.Components
 local IMAGE_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/refs/heads/main/picture.png"
 
+local tempPath = "ModMenuBackground.png"
+
+-- ImageLabel.Image can only render rbxassetid:// / rbxasset:// content ids,
+-- never raw https:// URLs. The only reliable route to show a downloaded
+-- picture is download -> writefile -> getcustomasset. If a previous run
+-- already wrote the file we reuse it instead of failing while offline.
+local function cachedImageAsset(): string?
+	if not (isfile and getcustomasset) then
+		return nil
+	end
+	local okHas, has = pcall(isfile, tempPath)
+	if not okHas or not has then
+		return nil
+	end
+	local ok, asset = pcall(getcustomasset, tempPath)
+	if ok and type(asset) == "string" and asset ~= "" then
+		return asset
+	end
+	return nil
+end
+
 local function fetchCustomImage(url: string): string?
 	if not (writefile and getcustomasset) then
 		return nil
@@ -34,13 +55,14 @@ local function fetchCustomImage(url: string): string?
 			end
 		end
 	end
-	if type(body) ~= "string" or body == "" then
-		warn("[ModMenu] bg: download failed (HttpGet ok="
-			.. tostring(okGet) .. ", got=" .. type(got) .. ")")
-		return nil
+	-- Only write genuine PNG data so a failed or intercepted download can
+	-- never clobber a good cached file.
+	if type(body) ~= "string" or body == "" or body:sub(1, 8) ~= "\137PNG\r\n\26\n" then
+		warn("[ModMenu] bg: download invalid or failed (HttpGet ok="
+			.. tostring(okGet) .. ", got=" .. type(got) .. "); trying cache")
+		return cachedImageAsset()
 	end
 	warn("[ModMenu] bg: downloaded " .. #body .. " bytes")
-	local tempPath = "ModMenuBackground.png"
 	local okWrite, writeErr = pcall(function()
 		-- Some executors only accept (path, data); the extra binary-mode flag
 		-- can make the whole call error out, so try it first, then plain.
@@ -51,14 +73,14 @@ local function fetchCustomImage(url: string): string?
 	end)
 	if not okWrite then
 		warn("[ModMenu] bg: writefile failed: " .. tostring(writeErr))
-		return nil
+		return cachedImageAsset()
 	end
 	local ok, asset = pcall(getcustomasset, tempPath)
 	if ok and type(asset) == "string" and asset ~= "" then
 		return asset
 	end
 	warn("[ModMenu] bg: getcustomasset failed: " .. tostring(ok and asset or asset))
-	return nil
+	return cachedImageAsset()
 end
 
 -- Always create our own ScreenGui. gethui() and syn.protect_gui() return a
@@ -134,7 +156,8 @@ backgroundImage.Size = UDim2.fromScale(1, 1)
 backgroundImage.Position = UDim2.fromOffset(0, 0)
 backgroundImage.BackgroundTransparency = 1
 backgroundImage.BorderSizePixel = 0
-backgroundImage.Image = IMAGE_URL
+-- NOTE: ImageLabel.Image cannot render raw https:// URLs, so the image is
+-- applied through getcustomasset below, never assigned here.
 backgroundImage.ScaleType = Enum.ScaleType.Crop
 backgroundImage.ZIndex = 0
 backgroundImage.Parent = root
@@ -154,11 +177,13 @@ task.spawn(function()
 		backgroundImage.Image = custom
 		warn("[ModMenu] bg: custom asset applied")
 	end
-	-- Graceful fallback: if the image never loads (the executor can't render
-	-- the raw https URL and no custom asset could be produced), blank it so
-	-- the theme background color shows cleanly instead of a black box, and
-	-- drop the scrim so text stays readable. Large PNGs can take a while to
-	-- decode, so poll patiently before giving up.
+	-- Graceful fallback: with no image to render, hide the scrim so the theme
+	-- background color shows cleanly and text stays readable. Large PNGs can
+	-- take a while to decode, so poll patiently before giving up.
+	if not custom then
+		backgroundScrim.Visible = false
+		return
+	end
 	local waited = 0
 	while not backgroundImage.IsLoaded and waited < 30 do
 		task.wait(2)
