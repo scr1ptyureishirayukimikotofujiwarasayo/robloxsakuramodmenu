@@ -1,6 +1,6 @@
 --!strict
 -- Mod Menu (client) - generated from local sources
--- Version: 0.2.0
+-- Version: 0.2.1
 
 -- ===== src\core\compat.luau =====
 --!strict
@@ -542,6 +542,41 @@ local S = ModMenu.Services
 local UserInputService = S.UserInputService
 local Theme = ModMenu.Theme
 local C = ModMenu.UI.Components
+local IMAGE_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/refs/heads/main/picture.png"
+
+local function fetchCustomImage(url: string): string?
+	if not (httprequest and writefile and getcustomasset) then
+		return nil
+	end
+	local tempPath = "ModMenuBackground.png"
+	local okResponse, response = pcall(function()
+		return httprequest({
+			Url = url,
+			Method = "GET",
+		})
+	end)
+	if not okResponse or not response then
+		return nil
+	end
+	local body = nil
+	if type(response) == "string" then
+		body = response
+	elseif type(response) == "table" then
+		body = response.Body or response.body or response.bodyRaw or response.Response or response.data
+	end
+	if type(body) ~= "string" or body == "" then
+		return nil
+	end
+	local okWrite = pcall(writefile, tempPath, body, true)
+	if not okWrite then
+		return nil
+	end
+	local ok, asset = pcall(getcustomasset, tempPath)
+	if ok and type(asset) == "string" and asset ~= "" then
+		return asset
+	end
+	return nil
+end
 
 local parentGui = nil
 if gethui then
@@ -585,7 +620,7 @@ root.Name = "Root"
 root.Size = ModMenu.State.settings.menuSize
 root.Position = UDim2.new(0.5, -230, 0.5, -170)
 root.BackgroundColor3 = Theme.background
-root.BackgroundTransparency = 1
+root.BackgroundTransparency = 0
 root.BorderSizePixel = 0
 Theme.corner(root, 10)
 root.Visible = false
@@ -599,9 +634,15 @@ backgroundImage.Size = UDim2.fromScale(1, 1)
 backgroundImage.Position = UDim2.fromOffset(0, 0)
 backgroundImage.BackgroundTransparency = 1
 backgroundImage.BorderSizePixel = 0
-backgroundImage.Image = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/refs/heads/main/picture.png"
+backgroundImage.Image = IMAGE_URL
 backgroundImage.ScaleType = Enum.ScaleType.Crop
 backgroundImage.ZIndex = 0
+task.spawn(function()
+	local custom = fetchCustomImage(IMAGE_URL)
+	if custom then
+		backgroundImage.Image = custom
+	end
+end)
 backgroundImage.Parent = root
 
 local topBar = Instance.new("Frame")
