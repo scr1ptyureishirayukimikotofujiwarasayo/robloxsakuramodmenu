@@ -95,6 +95,17 @@ do
 	C.button(p, "Reset Movement", function() ModMenu.Features.Movement.resetMovement() end)
 end
 
+-- Protection
+do
+	local p = Panels.protection
+	C.section(p, "Anti-Fling")
+	C.toggle(p, "protection.antiFling", "Anti-Fling", false, function(v) ModMenu.Features.Protection.antiFling(v) end)
+	C.slider(p, "protection.flingThreshold", "Fling Velocity", 50, 5000, 400)
+	C.section(p, "Anti-Teleport")
+	C.toggle(p, "protection.antiTeleport", "Anti-Teleport", false, function(v) ModMenu.Features.Protection.antiTeleport(v) end)
+	C.slider(p, "protection.tpMaxStuds", "Max Studs Per Frame", 5, 500, 50)
+end
+
 -- Utility
 do
 	local p = Panels.utility
@@ -111,6 +122,10 @@ do
 	C.toggle(p, "utility.lockWorkspace", "Lock Workspace", false, function(v) ModMenu.Features.Utility.lockWorkspace(v) end)
 	C.toggle(p, "utility.toolGrabber", "Tool Grabber", false, function(v) ModMenu.Features.Utility.toolGrabber(v) end)
 	C.toggle(p, "utility.reach", "Tool Reach", false, function(v) ModMenu.Features.Utility.reach(v) end)
+	C.section(p, "Interactions")
+	C.toggle(p, "interaction.clickDetectors", "Auto Click Detectors", false, function(v) ModMenu.Features.Interaction.clickDetectorLoop(v) end)
+	C.toggle(p, "interaction.touch", "Auto Touch Parts", false, function(v) ModMenu.Features.Interaction.touchInterestLoop(v) end)
+	C.slider(p, "interaction.interval", "Fire Interval (s)", 0.05, 10, 1)
 	C.section(p, "Diagnostics")
 	C.button(p, "FE Check", function() ModMenu.Features.Utility.feCheck() end)
 	local players = {}
