@@ -1,7 +1,10 @@
-"""Concatenate src/*.luau into dist/ModMenu.lua.
+"""Concatenate src modules into dist/ModMenu.lua.
 
 The bundle is a plain concatenation in dependency order: every module assigns
 onto the shared ModMenu table, and dist is executed as one chunk.
+
+Source files may be `.luau` (local project) or `.lua` (the GitHub repo); the
+resolver accepts either.
 
 Usage:  python build.py [version]
 """
@@ -12,26 +15,26 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 VERSION = sys.argv[1] if len(sys.argv) > 1 else "0.4.0"
 
 ORDER = [
-    "core/compat.luau",
-    "core/services.luau",
-    "core/notify.luau",
-    "core/state.luau",
-    "core/config.luau",
-    "ui/theme.luau",
-    "ui/components.luau",
-    "ui/menu.luau",
-    "features/movement.luau",
-    "features/visual.luau",
-    "features/character.luau",
-    "features/utility.luau",
-    "features/teleport.luau",
-    "features/world.luau",
-    "features/protection.luau",
-    "features/interaction.luau",
-    "features/misc.luau",
-    "features/dex.luau",
-    "features/reviz.luau",
-    "init.luau",
+    "core/compat",
+    "core/services",
+    "core/notify",
+    "core/state",
+    "core/config",
+    "ui/theme",
+    "ui/components",
+    "ui/menu",
+    "features/movement",
+    "features/visual",
+    "features/character",
+    "features/utility",
+    "features/teleport",
+    "features/world",
+    "features/protection",
+    "features/interaction",
+    "features/misc",
+    "features/dex",
+    "features/reviz",
+    "init",
 ]
 
 out = [
@@ -42,17 +45,24 @@ out = [
 ]
 
 for rel in ORDER:
-    path = os.path.join(ROOT, "src", rel.replace("/", os.sep))
+    base = os.path.join(ROOT, "src", rel.replace("/", os.sep))
+    path = None
+    for ext in (".luau", ".lua"):
+        if os.path.exists(base + ext):
+            path = base + ext
+            break
+    if path is None:
+        raise SystemExit("missing source: src/%s(.luau|.lua)" % rel)
     with open(path, "r", encoding="utf-8") as f:
         content = f.read().replace("\r\n", "\n").rstrip("\n")
-    out.append("-- ===== src\\" + rel.replace("/", "\\") + " =====")
+    out.append("-- ===== src\\" + rel.replace("/", "\\") + os.path.splitext(path)[1] + " =====")
     out.append(content)
     out.append("")
 
+bundle = "\n".join(out)
 dist_dir = os.path.join(ROOT, "dist")
 os.makedirs(dist_dir, exist_ok=True)
 target = os.path.join(dist_dir, "ModMenu.lua")
-bundle = "\n".join(out)
 with open(target, "w", encoding="utf-8", newline="\n") as f:
     f.write(bundle)
 
