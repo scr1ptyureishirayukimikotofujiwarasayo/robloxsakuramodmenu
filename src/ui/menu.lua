@@ -13,16 +13,74 @@ local C = ModMenu.UI.Components
 --   2) BACKGROUND_ASSET_ID: an uploaded Decal id. Works on executors whose
 --      ImageLabel loads rbxassetid; a load timeout falls back to solid.
 --   3) Solid themed background.
-local BACKGROUND_FILE = "ModMenuBackground.png" -- file in the executor's workspace folder
+local BACKGROUND_FILES = { "ModMenuBackground.png", "picture.png" } -- files in the executor's workspace folder
+local BACKGROUND_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/main/picture.png"
 local BACKGROUND_ASSET_ID = "86915755447721"
+local PNG_MAGIC = "\137PNG\r\n\26\n"
+
+local function hasValidPngFile(path: string): boolean
+	if not readfile then return false end
+	local ok, data = pcall(readfile, path)
+	return ok and type(data) == "string" and data:sub(1, 8) == PNG_MAGIC
+end
+
+local function ensureLocalBackgroundFile(): string?
+	for _, file in BACKGROUND_FILES do
+		if hasValidPngFile(file) then
+			return file
+		end
+	end
+	-- Attempt to download picture.png into ModMenuBackground.png if missing
+	local target = BACKGROUND_FILES[1]
+	local body: string? = nil
+	local okGet, got = pcall(function()
+		return game:HttpGet(BACKGROUND_URL, true)
+	end)
+	if okGet and type(got) == "string" and got:sub(1, 8) == PNG_MAGIC then
+		body = got
+	elseif httprequest then
+		local okReq, resp = pcall(httprequest, { Url = BACKGROUND_URL, Method = "GET" })
+		if okReq and resp then
+			local raw = if type(resp) == "string" then resp elseif type(resp) == "table" then (resp.Body or resp.body or resp.Content or resp.content or resp.data) else nil
+			if type(raw) == "string" and raw:sub(1, 8) == PNG_MAGIC then
+				body = raw
+			end
+		end
+	end
+	if body and writefile then
+		pcall(function()
+			local ok = pcall(writefile, target, body, true)
+			if not ok then
+				writefile(target, body)
+			end
+		end)
+		if hasValidPngFile(target) then
+			return target
+		end
+	end
+	return nil
+end
 
 -- Returns (content id or nil, source tag "custom" | "rbxassetid" | "none").
 local function resolveBackgroundImage(): (string?, string)
 	local custom = getcustomasset or getsynasset
 	if custom then
-		local ok, cid = pcall(custom, BACKGROUND_FILE)
-		if ok and type(cid) == "string" and cid ~= "" then
-			return cid, "custom"
+		-- Try existing local files first without blocking on network
+		for _, file in BACKGROUND_FILES do
+			if not readfile or hasValidPngFile(file) then
+				local ok, cid = pcall(custom, file)
+				if ok and type(cid) == "string" and cid ~= "" then
+					return cid, "custom"
+				end
+			end
+		end
+		-- Download if missing and try again
+		local downloaded = ensureLocalBackgroundFile()
+		if downloaded then
+			local ok, cid = pcall(custom, downloaded)
+			if ok and type(cid) == "string" and cid ~= "" then
+				return cid, "custom"
+			end
 		end
 	end
 	if BACKGROUND_ASSET_ID ~= "" then
@@ -248,14 +306,27 @@ minBtn.BorderSizePixel = 0
 Theme.corner(minBtn, 6)
 minBtn.Parent = topBar
 
-local sidebar = Instance.new("Frame")
+local sidebar = Instance.new("ScrollingFrame")
 sidebar.Size = UDim2.new(0, 120, 1, -30)
 sidebar.Position = UDim2.new(0, 0, 0, 30)
 sidebar.BackgroundColor3 = Theme.panel
 sidebar.BackgroundTransparency = 0.3
 sidebar.BorderSizePixel = 0
+sidebar.ScrollBarThickness = 4
+sidebar.AutomaticCanvasSize = Enum.AutomaticSize.Y
+sidebar.CanvasSize = UDim2.new(0, 0, 0, 0)
 sidebar.ZIndex = 2
 sidebar.Parent = root
+local sidebarLayout = Instance.new("UIListLayout")
+sidebarLayout.Padding = UDim.new(0, 4)
+sidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+sidebarLayout.Parent = sidebar
+local sidebarPad = Instance.new("UIPadding")
+sidebarPad.PaddingTop = UDim.new(0, 4)
+sidebarPad.PaddingLeft = UDim.new(0, 4)
+sidebarPad.PaddingRight = UDim.new(0, 4)
+sidebarPad.PaddingBottom = UDim.new(0, 6)
+sidebarPad.Parent = sidebar
 
 local contentArea = Instance.new("Frame")
 contentArea.Size = UDim2.new(1, -120, 1, -30)
@@ -322,8 +393,8 @@ ModMenu.Menu.switchTab = switchTab
 
 for i, cat in categories do
 	local btn = Instance.new("TextButton")
-	btn.Size = UDim2.new(1, -8, 0, 26)
-	btn.Position = UDim2.new(0, 4, 0, 4 + (i - 1) * 30)
+	btn.Size = UDim2.new(1, 0, 0, 26)
+	btn.LayoutOrder = i
 	btn.BackgroundColor3 = Theme.surface
 	btn.Text = cat.name
 	btn.TextColor3 = Theme.text
@@ -390,9 +461,13 @@ trackConnection(S.UserInputService.InputBegan:Connect(function(input, gameProces
 		setOpen(not ModMenu.Menu.Open)
 		return
 	end
-	-- Reviz prefix key opens the Console tab and focuses its command box.
+	-- Reviz prefix key: if the standalone Reviz Admin command bar is open, its
+	-- own listener focuses CMDBAR; otherwise open the Console tab and focus its box.
 	local reviz = ModMenu.Features and ModMenu.Features.Reviz
 	if reviz and reviz.getPrefix then
+		if reviz.isOpen and reviz.isOpen() then
+			return
+		end
 		local prefix = reviz.getPrefix()
 		local key = nil
 		if prefix == ";" or prefix == ":" then

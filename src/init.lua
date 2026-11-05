@@ -109,8 +109,9 @@ end
 -- Utility
 do
 	local p = Panels.utility
-	C.section(p, "Explorer")
+	C.section(p, "Scripts & Explorer")
 	C.toggle(p, "utility.dex", "Dex Explorer", false, function(v) ModMenu.Features.Dex.toggle(v) end)
+	C.toggle(p, "utility.reviz", "Reviz Admin Remake", false, function(v) ModMenu.Features.Reviz.toggle(v) end)
 	C.section(p, "Movement Tools")
 	C.toggle(p, "utility.clickTP", "Click Teleport", false, function(v) ModMenu.Features.Movement.clickTeleport(v) end)
 	C.button(p, "Save Position", function() ModMenu.Features.Movement.savePosition() end)
@@ -142,6 +143,7 @@ do
 	local p = Panels.console
 	local Reviz = ModMenu.Features.Reviz
 	C.section(p, "SakuraVibes999's Reviz Admin")
+	C.toggle(p, "utility.reviz", "Reviz Admin Remake GUI", false, function(v) Reviz.toggle(v) end)
 
 	local info = Instance.new("TextLabel")
 	info.Size = UDim2.new(1, -8, 0, 34)

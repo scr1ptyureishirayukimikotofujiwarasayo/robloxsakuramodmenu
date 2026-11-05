@@ -460,23 +460,26 @@ local function slider(parent: Instance, id: string, label: string, min: number, 
 		if apply then pcall(apply, value) end
 	end
 
-	bar.InputBegan:Connect(function(input)
+	local menuConns = ModMenu.State.getConnections("menu")
+	table.insert(menuConns, bar.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
 		end
-	end)
-	S.UserInputService.InputEnded:Connect(function(input)
+	end))
+	table.insert(menuConns, S.UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = false
-			pcall(ModMenu.Config.save)
+			if dragging then
+				dragging = false
+				pcall(ModMenu.Config.save)
+			end
 		end
-	end)
-	S.UserInputService.InputChanged:Connect(function(input)
+	end))
+	table.insert(menuConns, S.UserInputService.InputChanged:Connect(function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			local pct = math.clamp((input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
 			setValue(min + (max - min) * pct)
 		end
-	end)
+	end))
 
 	setValue(value)
 	return row
@@ -607,16 +610,74 @@ local C = ModMenu.UI.Components
 --   2) BACKGROUND_ASSET_ID: an uploaded Decal id. Works on executors whose
 --      ImageLabel loads rbxassetid; a load timeout falls back to solid.
 --   3) Solid themed background.
-local BACKGROUND_FILE = "ModMenuBackground.png" -- file in the executor's workspace folder
+local BACKGROUND_FILES = { "ModMenuBackground.png", "picture.png" } -- files in the executor's workspace folder
+local BACKGROUND_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/main/picture.png"
 local BACKGROUND_ASSET_ID = "86915755447721"
+local PNG_MAGIC = "\137PNG\r\n\26\n"
+
+local function hasValidPngFile(path: string): boolean
+	if not readfile then return false end
+	local ok, data = pcall(readfile, path)
+	return ok and type(data) == "string" and data:sub(1, 8) == PNG_MAGIC
+end
+
+local function ensureLocalBackgroundFile(): string?
+	for _, file in BACKGROUND_FILES do
+		if hasValidPngFile(file) then
+			return file
+		end
+	end
+	-- Attempt to download picture.png into ModMenuBackground.png if missing
+	local target = BACKGROUND_FILES[1]
+	local body: string? = nil
+	local okGet, got = pcall(function()
+		return game:HttpGet(BACKGROUND_URL, true)
+	end)
+	if okGet and type(got) == "string" and got:sub(1, 8) == PNG_MAGIC then
+		body = got
+	elseif httprequest then
+		local okReq, resp = pcall(httprequest, { Url = BACKGROUND_URL, Method = "GET" })
+		if okReq and resp then
+			local raw = if type(resp) == "string" then resp elseif type(resp) == "table" then (resp.Body or resp.body or resp.Content or resp.content or resp.data) else nil
+			if type(raw) == "string" and raw:sub(1, 8) == PNG_MAGIC then
+				body = raw
+			end
+		end
+	end
+	if body and writefile then
+		pcall(function()
+			local ok = pcall(writefile, target, body, true)
+			if not ok then
+				writefile(target, body)
+			end
+		end)
+		if hasValidPngFile(target) then
+			return target
+		end
+	end
+	return nil
+end
 
 -- Returns (content id or nil, source tag "custom" | "rbxassetid" | "none").
 local function resolveBackgroundImage(): (string?, string)
 	local custom = getcustomasset or getsynasset
 	if custom then
-		local ok, cid = pcall(custom, BACKGROUND_FILE)
-		if ok and type(cid) == "string" and cid ~= "" then
-			return cid, "custom"
+		-- Try existing local files first without blocking on network
+		for _, file in BACKGROUND_FILES do
+			if not readfile or hasValidPngFile(file) then
+				local ok, cid = pcall(custom, file)
+				if ok and type(cid) == "string" and cid ~= "" then
+					return cid, "custom"
+				end
+			end
+		end
+		-- Download if missing and try again
+		local downloaded = ensureLocalBackgroundFile()
+		if downloaded then
+			local ok, cid = pcall(custom, downloaded)
+			if ok and type(cid) == "string" and cid ~= "" then
+				return cid, "custom"
+			end
 		end
 	end
 	if BACKGROUND_ASSET_ID ~= "" then
@@ -842,14 +903,27 @@ minBtn.BorderSizePixel = 0
 Theme.corner(minBtn, 6)
 minBtn.Parent = topBar
 
-local sidebar = Instance.new("Frame")
+local sidebar = Instance.new("ScrollingFrame")
 sidebar.Size = UDim2.new(0, 120, 1, -30)
 sidebar.Position = UDim2.new(0, 0, 0, 30)
 sidebar.BackgroundColor3 = Theme.panel
 sidebar.BackgroundTransparency = 0.3
 sidebar.BorderSizePixel = 0
+sidebar.ScrollBarThickness = 4
+sidebar.AutomaticCanvasSize = Enum.AutomaticSize.Y
+sidebar.CanvasSize = UDim2.new(0, 0, 0, 0)
 sidebar.ZIndex = 2
 sidebar.Parent = root
+local sidebarLayout = Instance.new("UIListLayout")
+sidebarLayout.Padding = UDim.new(0, 4)
+sidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+sidebarLayout.Parent = sidebar
+local sidebarPad = Instance.new("UIPadding")
+sidebarPad.PaddingTop = UDim.new(0, 4)
+sidebarPad.PaddingLeft = UDim.new(0, 4)
+sidebarPad.PaddingRight = UDim.new(0, 4)
+sidebarPad.PaddingBottom = UDim.new(0, 6)
+sidebarPad.Parent = sidebar
 
 local contentArea = Instance.new("Frame")
 contentArea.Size = UDim2.new(1, -120, 1, -30)
@@ -916,8 +990,8 @@ ModMenu.Menu.switchTab = switchTab
 
 for i, cat in categories do
 	local btn = Instance.new("TextButton")
-	btn.Size = UDim2.new(1, -8, 0, 26)
-	btn.Position = UDim2.new(0, 4, 0, 4 + (i - 1) * 30)
+	btn.Size = UDim2.new(1, 0, 0, 26)
+	btn.LayoutOrder = i
 	btn.BackgroundColor3 = Theme.surface
 	btn.Text = cat.name
 	btn.TextColor3 = Theme.text
@@ -984,9 +1058,13 @@ trackConnection(S.UserInputService.InputBegan:Connect(function(input, gameProces
 		setOpen(not ModMenu.Menu.Open)
 		return
 	end
-	-- Reviz prefix key opens the Console tab and focuses its command box.
+	-- Reviz prefix key: if the standalone Reviz Admin command bar is open, its
+	-- own listener focuses CMDBAR; otherwise open the Console tab and focus its box.
 	local reviz = ModMenu.Features and ModMenu.Features.Reviz
 	if reviz and reviz.getPrefix then
+		if reviz.isOpen and reviz.isOpen() then
+			return
+		end
 		local prefix = reviz.getPrefix()
 		local key = nil
 		if prefix == ";" or prefix == ":" then
@@ -2076,9 +2154,8 @@ end
 
 -- ===== src\features\reviz.luau =====
 -- features/reviz.luau
--- SakuraVibes999's Reviz Admin command engine, integrated into ModMenu.
--- The command bodies are the verified revival's; the GUI shell, command bar
--- and chat-bar plumbing are replaced by ModMenu's Console panel.
+-- SakuraVibes999's Reviz Admin remake, integrated into ModMenu as a toggleable
+-- standalone GUI (command bar + CMDS window) and also usable from the Console tab.
 ModMenu.Features = ModMenu.Features or {}
 ModMenu.Features.Reviz = (function()
     local Reviz = {}
@@ -2098,6 +2175,72 @@ ModMenu.Features.Reviz = (function()
 
     local change, GetPlayer, plrchat, apply
     local Char, Local, added, adminversion, annoying, annplr, attplr, b, banpl, binds, box, bplrr, brplr, cbring, cbringall, cbringing, changingstate, chatlogs, clickdel, clickgoto, droppinghats, droppingtools, flwplr, flying, followed, gettingtools, handleSize, hdwplr, hwalk, loc, no, noclip, objtodel, pmspammed, remotes, removingmeshhats, removingmeshtool, saved, spamdelay, spamming, spammingpm, spamtext, speedfly, speedget, spin, spinplr, stareplr, staring, statechosen, stopsitting, touched, tpdback, traill, trlplr, vis
+    local bringingmod = false
+    local revizGuiOpen = false
+    local ScreenGui: ScreenGui? = nil
+    local CMDBAR: TextBox? = nil
+    local CMDS: ScreenGui? = nil
+    local CMDSFRAME: Frame? = nil
+
+local function tpBypass(seconds: number?)
+    local prot = ModMenu.Features and ModMenu.Features.Protection
+    if prot and prot.bypass then
+        pcall(prot.bypass, seconds or 1)
+    end
+end
+
+local function getGuiParent(): Instance
+    if type(gethui) == "function" then
+        local ok, parent = pcall(gethui)
+        if ok and typeof(parent) == "Instance" then
+            return parent
+        end
+    end
+    local okCore, coreGui = pcall(function() return game:GetService("CoreGui") end)
+    if okCore and coreGui then
+        return coreGui
+    end
+    local lp = game:GetService("Players").LocalPlayer
+    local pg = lp and lp:FindFirstChild("PlayerGui")
+    if pg then
+        return pg
+    end
+    return game:GetService("CoreGui")
+end
+
+local function destroyRevizGuis()
+    local parents = { getGuiParent() }
+    local okCore, coreGui = pcall(function() return game:GetService("CoreGui") end)
+    if okCore and coreGui then table.insert(parents, coreGui) end
+    local lp = game:GetService("Players").LocalPlayer
+    local pg = lp and lp:FindFirstChild("PlayerGui")
+    if pg then table.insert(parents, pg) end
+    for _, parent in ipairs(parents) do
+        for _, name in ipairs({ "RevizAdmin", "RevizAdminCMDS", "RevizAdminIntro" }) do
+            local ok, g = pcall(function() return parent:FindFirstChild(name) end)
+            if ok and g then
+                pcall(function() g:Destroy() end)
+            end
+        end
+    end
+    ScreenGui = nil
+    CMDBAR = nil
+    CMDS = nil
+    CMDSFRAME = nil
+end
+
+local function syncRevizToggle(state: boolean)
+    ModMenu.State.toggles["utility.reviz"] = state
+    local syncers = ModMenu.UI and ModMenu.UI.toggleSync and ModMenu.UI.toggleSync["utility.reviz"]
+    if syncers then
+        for _, sync in syncers do
+            pcall(sync, state)
+        end
+    end
+    if ModMenu.Config and ModMenu.Config.save then
+        pcall(ModMenu.Config.save)
+    end
+end
 
 local function on(signal, handler)
     local connection = signal:Connect(handler)
@@ -2580,6 +2723,7 @@ on(mouse.KeyDown, function(key)
         local root = character and character:FindFirstChild("HumanoidRootPart")
         if mouse.Target and root then
             if clickgoto then
+                tpBypass(0.5)
                 root.CFrame = CFrame.new(mouse.Hit.x, mouse.Hit.y + 5, mouse.Hit.z)
             elseif clickdel then
                 mouse.Target:Destroy()
@@ -3060,6 +3204,7 @@ local function Execute(msg)
     end
     if string.sub(msg, 1, 6) == (prefix.."goto ") then
         for i,v in pairs(GetPlayer(string.sub(msg, 7))) do
+            tpBypass(1)
             lplayer.Character.HumanoidRootPart.CFrame = game:GetService("Players")[v.Name].Character.HumanoidRootPart.CFrame
         end
     end
@@ -3246,7 +3391,7 @@ local function Execute(msg)
         })
     end
     if string.sub(msg, 1, 7) == (prefix.."wsvis ") then
-        vis = (string.sub(msg, 8))
+        vis = tonumber(string.sub(msg, 8)) or 0
         local a = game:GetService("Workspace"):GetDescendants()
         for i = 1, #a do
             if a[i].ClassName == "Part" then
@@ -3336,7 +3481,7 @@ local function Execute(msg)
                 local a = Instance.new("SelectionBox",v.Handle)
                 a.Name = "a"
                 a.Adornee = v.Handle
-                v.Handle.Size = Vector3.new(0.5,0.5,(string.sub(msg, 8)))
+                v.Handle.Size = Vector3.new(0.5,0.5,tonumber(string.sub(msg, 8)) or 60)
                 v.GripPos = Vector3.new(0,0,0)
                 lplayer.Character.Humanoid:UnequipTools()
             end
@@ -3389,6 +3534,7 @@ local function Execute(msg)
     end
     if string.sub(msg, 1, 7) == (prefix.."tp me ") then
         for i,v in pairs(GetPlayer(string.sub(msg, 8))) do
+            tpBypass(1)
             lplayer.Character.HumanoidRootPart.CFrame = game:GetService("Players")[v.Name].Character.HumanoidRootPart.CFrame
         end
     end
@@ -3520,6 +3666,7 @@ local function Execute(msg)
         })
     end
     if string.sub(msg, 1, 8) == (prefix.."loadpos") then
+        tpBypass(1)
         lplayer.Character.HumanoidRootPart.CFrame = saved
     end
     if string.sub(msg, 1, 6) == (prefix.."bang ") then
@@ -3536,9 +3683,11 @@ local function Execute(msg)
         banpl = false
     end
     if string.sub(msg, 1, 10) == (prefix.."bringmod ") then
+        local targetModName = string.sub(msg, 11)
+        bringingmod = true
         local function bringmodw()
         for i,obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
-        if obj.Name == (string.sub(msg, 11)) then
+        if obj.Name == targetModName then
         for i,ch in pairs(obj:GetDescendants()) do
         if (ch:IsA("BasePart")) then
         ch.CFrame = lplayer.Character.HumanoidRootPart.CFrame
@@ -3555,9 +3704,11 @@ local function Execute(msg)
         end
         end
         end
-        while task.wait() do
-            bringmodw()
-        end
+        task.spawn(function()
+            while bringingmod and task.wait() do
+                pcall(bringmodw)
+            end
+        end)
         safeSetCore("SendNotification", {
         Title = "BringMod";
         Text = "BringMod enabled.";
@@ -3768,17 +3919,19 @@ local function Execute(msg)
         })
     end
     if string.sub(msg, 1, 10) == (prefix.."delcmdbar") then
-        if ModMenu.Menu and ModMenu.Menu.setOpen then ModMenu.Menu.setOpen(false) end
+        destroyRevizGuis()
+        revizGuiOpen = false
+        syncRevizToggle(false)
     end
     if string.sub(msg, 1, 6) == (prefix.."reset") then
         lplayer.Character.Head:Destroy()
     end
     if string.sub(msg, 1, 7) == (prefix.."state ") then
-        statechosen = string.sub(msg, 8)
+        statechosen = tonumber(string.sub(msg, 8)) or 0
         changingstate = true
     end
     if string.sub(msg, 1, 9) == (prefix.."gravity ") then
-        game:GetService("Workspace").Gravity = string.sub(msg, 10)
+        game:GetService("Workspace").Gravity = tonumber(string.sub(msg, 10)) or 196.2
     end
     if string.sub(msg, 1, 10) == (prefix.."looprhats") then
         removingmeshhats = true
@@ -3942,16 +4095,25 @@ local function Execute(msg)
     end
     if string.sub(msg, 1, 7) == (prefix.."fixcam") then
         -- camera reset (destroying CurrentCamera breaks the client)
-        game:GetService("Workspace").CurrentCamera.CameraSubject = lplayer.Character.Humanoid
-        game:GetService("Workspace").CurrentCamera.CameraType = "Custom"
+        local cam = game:GetService("Workspace").CurrentCamera
+        if cam then
+            local char = lplayer and lplayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                cam.CameraSubject = hum
+            end
+            cam.CameraType = Enum.CameraType.Custom
+        end
         lplayer.CameraMinZoomDistance = 0.5
         lplayer.CameraMaxZoomDistance = 400
-        lplayer.CameraMode = "Classic"
+        lplayer.CameraMode = Enum.CameraMode.Classic
     end
     if string.sub(msg, 1, 8) == (prefix.."unstate") then
         changingstate = false
     end
 end
+
+local revizAlive = true
 
 local function tp()
     for i, player in ipairs(game:GetService("Players"):GetPlayers()) do
@@ -3970,35 +4132,140 @@ local function tpall()
     end
 end
 task.spawn(function()
-    while task.wait(spamdelay) do
+    while revizAlive and task.wait(spamdelay or 1) do
         if spamming == true then
             sendChat(spamtext)
         end
     end
 end)
 task.spawn(function()
-    while task.wait(spamdelay) do
+    while revizAlive and task.wait(spamdelay or 1) do
         if spammingpm == true then
             sendChat("/w "..pmspammed.." @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         end
     end
 end)
 task.spawn(function()
-    while task.wait() do
+    while revizAlive and task.wait() do
         if cbring == true then
             tp()
         end
     end
 end)
 task.spawn(function()
-    while task.wait() do
+    while revizAlive and task.wait() do
         if cbringall == true then
             tpall()
         end
     end
 end)
 
+    on(mouse.KeyDown, function(Key)
+        if revizGuiOpen and Key == prefix and CMDBAR and CMDBAR.Parent then
+            CMDBAR:CaptureFocus()
+        end
+    end)
+
+    local function buildRevizGui()
+        destroyRevizGuis()
+        local parent = getGuiParent()
+
+        local sg = Instance.new("ScreenGui")
+        local Frame = Instance.new("Frame")
+        local cmdbar = Instance.new("TextBox")
+        sg.Name = "RevizAdmin"
+        sg.ResetOnSpawn = false
+        sg.Parent = parent
+        Frame.Parent = sg
+        Frame.BackgroundColor3 = Color3.new(0.3, 0.1, 0.1)
+        Frame.BackgroundTransparency = 0.3
+        Frame.Position = UDim2.new(0.5, -100, 0, 10)
+        Frame.Size = UDim2.new(0, 200, 0, 40)
+        Frame.Active = true
+        Frame.Draggable = true
+        cmdbar.Name = "CMDBAR"
+        cmdbar.Parent = Frame
+        cmdbar.BackgroundColor3 = Color3.new(0.105882, 0.164706, 0.207843)
+        cmdbar.BackgroundTransparency = 0.2
+        cmdbar.Size = UDim2.new(0, 180, 0, 20)
+        cmdbar.Position = UDim2.new(0.05, 0, 0.25, 0)
+        cmdbar.Font = Enum.Font.SourceSansLight
+        cmdbar.TextSize = 14
+        cmdbar.TextColor3 = Color3.new(0.945098, 0.945098, 0.945098)
+        cmdbar.TextScaled = true
+        cmdbar.TextWrapped = true
+        cmdbar.Text = "Press " .. prefix .. " to type, Enter to execute"
+
+        cmdbar.FocusLost:Connect(function(enterPressed)
+            if enterPressed then
+                local entry = cmdbar.Text
+                if entry ~= "" then
+                    Reviz.execute(entry)
+                end
+                cmdbar.Text = ""
+            end
+        end)
+
+        local cmdsGui = Instance.new("ScreenGui")
+        local cmdsFrame = Instance.new("Frame")
+        local ScrollingFrame = Instance.new("ScrollingFrame")
+        local TextLabel = Instance.new("TextLabel")
+        local closegui = Instance.new("TextButton")
+        cmdsGui.Name = "RevizAdminCMDS"
+        cmdsGui.ResetOnSpawn = false
+        cmdsGui.Parent = parent
+        cmdsFrame.Name = "CMDSFRAME"
+        cmdsFrame.Parent = cmdsGui
+        cmdsFrame.Active = true
+        cmdsFrame.BackgroundColor3 = Color3.new(0.223529, 0.231373, 0.309804)
+        cmdsFrame.BorderSizePixel = 0
+        cmdsFrame.Draggable = true
+        cmdsFrame.Position = UDim2.new(0, 315, 0, 100)
+        cmdsFrame.Size = UDim2.new(0, 275, 0, 275)
+        cmdsFrame.Visible = false
+        ScrollingFrame.Parent = cmdsFrame
+        ScrollingFrame.BackgroundColor3 = Color3.new(0.160784, 0.160784, 0.203922)
+        ScrollingFrame.BorderSizePixel = 0
+        ScrollingFrame.Position = UDim2.new(0, 0, 0.0729999989, 0)
+        ScrollingFrame.Size = UDim2.new(1.04999995, 0, 0.92900002, 0)
+        ScrollingFrame.CanvasSize = UDim2.new(0, 0, 10, 0)
+        TextLabel.Parent = ScrollingFrame
+        TextLabel.BackgroundColor3 = Color3.new(1, 1, 1)
+        TextLabel.BackgroundTransparency = 1
+        TextLabel.Size = UDim2.new(0.930000007, 0, 1, 0)
+        TextLabel.Font = Enum.Font.SourceSans
+        TextLabel.Text = table.concat(Commands, ",\n") .. ",\n This list of commands is NOT showing everything, go to my thread in the pastebin link to see ALL commands."
+        TextLabel.TextColor3 = Color3.new(1, 1, 1)
+        TextLabel.TextSize = 15
+        TextLabel.TextWrapped = true
+        TextLabel.TextXAlignment = Enum.TextXAlignment.Left
+        TextLabel.TextYAlignment = Enum.TextYAlignment.Top
+        closegui.Name = "closegui"
+        closegui.Parent = cmdsFrame
+        closegui.BackgroundColor3 = Color3.new(0.890196, 0.223529, 0.0588235)
+        closegui.BorderSizePixel = 0
+        closegui.Position = UDim2.new(0.995000005, 0, 0, 0)
+        closegui.Size = UDim2.new(0.0545952693, 0, 0.0728644878, 0)
+        closegui.Font = Enum.Font.SourceSansBold
+        closegui.Text = "X"
+        closegui.TextColor3 = Color3.new(1, 1, 1)
+        closegui.TextSize = 20
+
+        closegui.MouseButton1Click:Connect(function()
+            cmdsFrame.Visible = false
+        end)
+
+        ScreenGui = sg
+        CMDBAR = cmdbar
+        CMDS = cmdsGui
+        CMDSFRAME = cmdsFrame
+        revizGuiOpen = true
+    end
+
     showCommandList = function()
+        if revizGuiOpen and CMDSFRAME and CMDSFRAME.Parent then
+            CMDSFRAME.Visible = true
+        end
         if Reviz.onCommands then
             pcall(Reviz.onCommands)
             return
@@ -4039,6 +4306,39 @@ end)
         showCommandList()
     end
 
+    Reviz.isOpen = function(): boolean
+        return revizGuiOpen and ScreenGui ~= nil and ScreenGui.Parent ~= nil
+    end
+
+    Reviz.open = function()
+        if Reviz.isOpen() then return end
+        buildRevizGui()
+        ModMenu.Notify("Reviz Admin", "Opened (press " .. prefix .. " to focus command bar).")
+    end
+
+    Reviz.close = function()
+        revizGuiOpen = false
+        destroyRevizGuis()
+        -- Stop active annoying/loop states when closing the admin remake
+        spamming = false
+        spammingpm = false
+        cbring = false
+        cbringall = false
+        bringingmod = false
+    end
+
+    Reviz.toggle = function(state: boolean)
+        if state then
+            Reviz.open()
+        else
+            local wasOpen = revizGuiOpen
+            Reviz.close()
+            if wasOpen then
+                ModMenu.Notify("Reviz Admin", "Closed.")
+            end
+        end
+    end
+
     on(lplayer.Chatted, function(msg)
         if not Reviz.chatEnabled then return end
         if string.sub(msg, 1, #prefix) == prefix then
@@ -4046,8 +4346,14 @@ end)
         end
     end)
 
+    -- Clean up any leftover Reviz GUIs from previous runs before toggle initializes
+    destroyRevizGuis()
+
     if STATE and STATE.onCleanup then
         STATE.onCleanup(function()
+            revizAlive = false
+            bringingmod = false
+            Reviz.close()
             ModMenu.State.clearConnections("reviz")
             clearRemotes()
         end)
@@ -4168,8 +4474,9 @@ end
 -- Utility
 do
 	local p = Panels.utility
-	C.section(p, "Explorer")
+	C.section(p, "Scripts & Explorer")
 	C.toggle(p, "utility.dex", "Dex Explorer", false, function(v) ModMenu.Features.Dex.toggle(v) end)
+	C.toggle(p, "utility.reviz", "Reviz Admin Remake", false, function(v) ModMenu.Features.Reviz.toggle(v) end)
 	C.section(p, "Movement Tools")
 	C.toggle(p, "utility.clickTP", "Click Teleport", false, function(v) ModMenu.Features.Movement.clickTeleport(v) end)
 	C.button(p, "Save Position", function() ModMenu.Features.Movement.savePosition() end)
@@ -4201,6 +4508,7 @@ do
 	local p = Panels.console
 	local Reviz = ModMenu.Features.Reviz
 	C.section(p, "SakuraVibes999's Reviz Admin")
+	C.toggle(p, "utility.reviz", "Reviz Admin Remake GUI", false, function(v) Reviz.toggle(v) end)
 
 	local info = Instance.new("TextLabel")
 	info.Size = UDim2.new(1, -8, 0, 34)

@@ -137,23 +137,26 @@ local function slider(parent: Instance, id: string, label: string, min: number, 
 		if apply then pcall(apply, value) end
 	end
 
-	bar.InputBegan:Connect(function(input)
+	local menuConns = ModMenu.State.getConnections("menu")
+	table.insert(menuConns, bar.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
 		end
-	end)
-	S.UserInputService.InputEnded:Connect(function(input)
+	end))
+	table.insert(menuConns, S.UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = false
-			pcall(ModMenu.Config.save)
+			if dragging then
+				dragging = false
+				pcall(ModMenu.Config.save)
+			end
 		end
-	end)
-	S.UserInputService.InputChanged:Connect(function(input)
+	end))
+	table.insert(menuConns, S.UserInputService.InputChanged:Connect(function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			local pct = math.clamp((input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
 			setValue(min + (max - min) * pct)
 		end
-	end)
+	end))
 
 	setValue(value)
 	return row

@@ -19,23 +19,24 @@ Client-side Roblox mod menu generated from the supplied source files.
 5. Use the `Settings` tab to change the open key and save settings.
 6. Use the `Console` tab for SakuraVibes999's Reviz Admin commands (see below).
 
-## Console (SakuraVibes999's Reviz Admin)
+## Console & Reviz Admin Remake (SakuraVibes999's Reviz Admin)
 
-The verified Reviz Admin command engine is embedded as
-`src/features/reviz.luau` and driven by the `Console` tab:
+The verified Reviz Admin remake is embedded as `src/features/reviz.luau` and can be used both as a toggleable standalone GUI (`RevizAdmin` command bar + `RevizAdminCMDS` window) and from the `Console` tab:
 
-- Type a command in the box and press Enter, or use the quick-command buttons.
-- Press the prefix key (default `:`) to open the Console tab and focus the box.
-- `List Commands` prints the full original command list into the panel.
+- Toggle `Reviz Admin Remake` under `Utility > Scripts & Explorer` (or `Console`) to open/close the original draggable Reviz command bar and commands window.
+- Type a command in the Console box (or Reviz command bar) and press Enter, or use the quick-command buttons.
+- Press the prefix key (default `:`) to focus the Reviz command bar when open, or to open the Console tab and focus its box.
+- `List Commands` opens the Reviz commands window (if enabled) and prints the full original command list into the panel.
 - `Chat Commands` (on by default) keeps the admin behaviour where a chat
   message beginning with the prefix runs the command.
 - Everything the commands report also appears in the panel log.
 
 ## Notes
 
-- **Background image:** the menu loads `ModMenuBackground.png` from the
+- **Background image:** the menu loads `ModMenuBackground.png` (or `picture.png`) from the
   executor's workspace folder via `getcustomasset` (Real: its Workspace
-  folder). If the file isn't found it falls back to the uploaded decal id in
+  folder), auto-downloading `picture.png` into `ModMenuBackground.png` if missing.
+  If `getcustomasset` is unavailable it falls back to the uploaded decal id in
   `BACKGROUND_ASSET_ID` (src/ui/menu.luau), then to a solid background.
   No Roblox upload is needed on Real.
 - **Background controls:** Settings > Background has an on/off toggle and a
