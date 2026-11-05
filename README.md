@@ -1,4 +1,4 @@
-# Mod Menu 0.1.0
+# Mod Menu 0.3.0
 
 Client-side Roblox mod menu generated from the supplied source files.
 
@@ -15,6 +15,17 @@ Client-side Roblox mod menu generated from the supplied source files.
 3. Execute `dist/ModMenu.lua`.
 4. Press the configured open key (default `RightShift`) to show/hide the menu.
 5. Use the `Settings` tab to change the open key and save settings.
+
+## Features
+
+- **Protection tab** - `Anti-Fling` (watchdog that zeroes runaway velocity, unseats fling
+  seats and snaps you back to your last safe position) and `Anti-Teleport` (reverts
+  single-frame moves larger than the slider). The menu's own teleports are exempted through
+  an internal bypass window.
+- **Utility > Interactions** - `Auto Click Detectors` and `Auto Touch Parts` fire every
+  ClickDetector / TouchTransmitter in the workspace on a configurable interval (toggleable).
+  Requires the `fireclickdetector` / `firetouchinterest` executor globals; the toggles turn
+  themselves back off with a notification if the executor lacks them.
 
 ## Notes
 
