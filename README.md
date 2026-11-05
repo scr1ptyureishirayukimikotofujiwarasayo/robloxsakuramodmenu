@@ -1,4 +1,4 @@
-# Mod Menu 0.4.0
+# Mod Menu 0.4.1
 
 Client-side Roblox mod menu generated from the supplied source files.
 
@@ -21,7 +21,7 @@ Client-side Roblox mod menu generated from the supplied source files.
 ## Features
 
 - **Reviz Admin Remake (Toggleable + Console tab)** - SakuraVibes999's Reviz Admin
-  (138 commands) can be toggled on/off as the original standalone command bar + commands window under `Utility > Scripts & Explorer` (or `Console`), and also driven directly from the `Console` tab with a command box, live log and quick actions.
+  (133 commands) can be toggled on/off as the original standalone command bar + commands window under `Utility > Scripts & Explorer` (or `Console`), and also driven directly from the `Console` tab with a command box, live log and quick actions.
 - **Protection tab** - `Anti-Fling` (watchdog that zeroes runaway velocity, unseats fling
   seats and snaps you back to your last safe position) and `Anti-Teleport` (reverts
   single-frame moves larger than the slider). The menu's own teleports are exempted through

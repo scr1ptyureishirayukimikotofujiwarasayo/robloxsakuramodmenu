@@ -12,7 +12,7 @@ import os
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-VERSION = sys.argv[1] if len(sys.argv) > 1 else "0.4.0"
+VERSION = sys.argv[1] if len(sys.argv) > 1 else "0.4.1"
 
 ORDER = [
     "core/compat",

@@ -14,6 +14,38 @@ ModMenu.Features.Reviz = (function()
     local showCommandList
 
     local prefix = ":"
+    local DEFAULT_PREFIX = ":"
+
+    -- Mouse.KeyDown hands over a lowercase key-name string, never the prefix
+    -- character, so the old `Key == prefix` check could never fire. Map the
+    -- prefix character to a KeyCode instead.
+    local PREFIX_KEYCODES = {
+        [";"] = Enum.KeyCode.Semicolon,
+        [":"] = Enum.KeyCode.Semicolon,
+        [","] = Enum.KeyCode.Comma,
+        ["."] = Enum.KeyCode.Period,
+        ["/"] = Enum.KeyCode.Slash,
+        ["-"] = Enum.KeyCode.Minus,
+        ["="] = Enum.KeyCode.Equals,
+        ["'"] = Enum.KeyCode.Quote,
+        ["`"] = Enum.KeyCode.Backquote,
+        ["["] = Enum.KeyCode.LeftBracket,
+        ["]"] = Enum.KeyCode.RightBracket,
+    }
+    local DIGIT_KEYCODES = {
+        ["0"] = "Zero", ["1"] = "One", ["2"] = "Two", ["3"] = "Three", ["4"] = "Four",
+        ["5"] = "Five", ["6"] = "Six", ["7"] = "Seven", ["8"] = "Eight", ["9"] = "Nine",
+    }
+
+    local function prefixKeyCode(): Enum.KeyCode?
+        if type(prefix) ~= "string" or #prefix ~= 1 then return nil end
+        local mapped = PREFIX_KEYCODES[prefix]
+        if mapped then return mapped end
+        local name = DIGIT_KEYCODES[prefix] or string.upper(prefix)
+        local ok, keycode = pcall(function() return Enum.KeyCode[name] end)
+        if ok then return keycode end
+        return nil
+    end
     local lplayer
     local plr
     local mouse
@@ -21,7 +53,11 @@ ModMenu.Features.Reviz = (function()
     local change, GetPlayer, plrchat, apply
     local Char, Local, added, adminversion, annoying, annplr, attplr, b, banpl, binds, box, bplrr, brplr, cbring, cbringall, cbringing, changingstate, chatlogs, clickdel, clickgoto, droppinghats, droppingtools, flwplr, flying, followed, gettingtools, handleSize, hdwplr, hwalk, loc, no, noclip, objtodel, pmspammed, remotes, removingmeshhats, removingmeshtool, saved, spamdelay, spamming, spammingpm, spamtext, speedfly, speedget, spin, spinplr, stareplr, staring, statechosen, stopsitting, touched, tpdback, traill, trlplr, vis
     local bringingmod = false
+    local bringingobj = false
     local revizGuiOpen = false
+    local flyKeyConnections = {}
+    local statusLabel: TextLabel? = nil
+    local executing = false
     local ScreenGui: ScreenGui? = nil
     local CMDBAR: TextBox? = nil
     local CMDS: ScreenGui? = nil
@@ -34,32 +70,43 @@ local function tpBypass(seconds: number?)
     end
 end
 
-local function getGuiParent(): Instance
+-- Every container a Reviz GUI may live in, best first. CoreGui is listed but
+-- assigning to it throws on Studio / low identity, so callers must pcall.
+local function guiParents(): { Instance }
+    local parents = {}
     if type(gethui) == "function" then
         local ok, parent = pcall(gethui)
         if ok and typeof(parent) == "Instance" then
-            return parent
+            table.insert(parents, parent)
         end
     end
     local okCore, coreGui = pcall(function() return game:GetService("CoreGui") end)
-    if okCore and coreGui then
-        return coreGui
+    if okCore and typeof(coreGui) == "Instance" then
+        table.insert(parents, coreGui)
     end
-    local lp = game:GetService("Players").LocalPlayer
-    local pg = lp and lp:FindFirstChild("PlayerGui")
-    if pg then
-        return pg
-    end
-    return game:GetService("CoreGui")
-end
-
-local function destroyRevizGuis()
-    local parents = { getGuiParent() }
-    local okCore, coreGui = pcall(function() return game:GetService("CoreGui") end)
-    if okCore and coreGui then table.insert(parents, coreGui) end
     local lp = game:GetService("Players").LocalPlayer
     local pg = lp and lp:FindFirstChild("PlayerGui")
     if pg then table.insert(parents, pg) end
+    return parents
+end
+
+-- Parents a ScreenGui to the first container that actually accepts it. Doing
+-- this unguarded is why toggling Reviz on could silently do nothing: the
+-- ScreenGui failed to parent to CoreGui and the error was swallowed by pcall.
+local function parentGui(gui: ScreenGui): boolean
+    for _, parent in ipairs(guiParents()) do
+        local ok = pcall(function()
+            gui.Parent = parent
+        end)
+        if ok and gui.Parent ~= nil then
+            return true
+        end
+    end
+    return false
+end
+
+local function destroyRevizGuis()
+    local parents = guiParents()
     for _, parent in ipairs(parents) do
         for _, name in ipairs({ "RevizAdmin", "RevizAdminCMDS", "RevizAdminIntro" }) do
             local ok, g = pcall(function() return parent:FindFirstChild(name) end)
@@ -72,6 +119,7 @@ local function destroyRevizGuis()
     CMDBAR = nil
     CMDS = nil
     CMDSFRAME = nil
+    statusLabel = nil
 end
 
 local function syncRevizToggle(state: boolean)
@@ -143,7 +191,12 @@ local function safeSetCore(name, data)
     end
 end
 
+-- Messages sent by the script itself must not be re-executed by the Chatted
+-- listener (e.g. ;spam with a prefix, or ;chat).
+local sentChat = {}
+
 local function sendChat(text)
+    sentChat[text] = os.clock() + 5
     local legacy = pcall(function()
         local chatEvents = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents")
         local request = chatEvents and chatEvents:FindFirstChild("SayMessageRequest")
@@ -247,6 +300,28 @@ local function pgsEnabled()
     local ok2, result2 = pcall(function() return WorkspaceService.PGSPhysicsSolverEnabled end)
     if ok2 then return result2 end
     return true
+end
+
+-- Roblox properties are typed: assigning a string to WalkSpeed/JumpPower/
+-- HipHeight used to throw "number expected, got string" on every use.
+local function toNumber(text, fallback: number): number
+    local value = tonumber(text)
+    if value == nil then
+        return fallback
+    end
+    return value
+end
+
+local function destroyNamed(parent: Instance?, name: string)
+    if not parent then return end
+    local child = parent:FindFirstChild(name)
+    if child then child:Destroy() end
+end
+
+local function setStatus(text: string)
+    if statusLabel and statusLabel.Parent then
+        statusLabel.Text = text
+    end
 end
 
     -- Original command list, shown by the Console panel's List Commands button.
@@ -372,8 +447,8 @@ end
         '[118] removefog -- Removes fog, client sided',
         '[119] disable -- Disables your character by removing humanoid',
         '[120] enable -- Enables your character by adding humanoid',
-        '[121] prefix [key] -- Changes the prefix used, default is ;',
-        '[122] ;resetprefix -- Resets the prefix to ; incase you change it to an unusable prefix. Say exactly ";resetprefix" to do this command, no matter what your prefix is set to.',
+        '[121] prefix [key] -- Changes the prefix used, default is :',
+        '[122] resetprefix -- Resets the prefix to : if you change it to an unusable one. Works no matter what the prefix is set to.',
         '[123] flyspeed [num] -- Change your fly speed, default is 1',
         '[124] carpet [plr] -- Makes you a carpet for a player, will not work if FE Godmode is on',
         '[125] uncarpet -- Stops carpet player',
@@ -383,6 +458,8 @@ end
         '[129] unlogchat -- Disables logchat',
         '[130] fixcam -- Fixes/resets your camera',
         '[131] unstate -- Stops changing state',
+        '[132] unbringobj -- Stops ;bringobj',
+        '[133] unbringmod -- Stops ;bringmod',
     }
 
 speedget = 1
@@ -390,15 +467,29 @@ speedget = 1
 lplayer = game:GetService("Players").LocalPlayer
  
 on(lplayer.CharacterAdded, function(character)
+    -- Every transient loop must stop on respawn, otherwise the Stepped handlers
+    -- keep dereferencing a character that no longer exists.
     spin = false
     flying = false
     staring = false
     banpl = false
+    followed = false
+    traill = false
+    annoying = false
+    hwalk = false
+    droppinghats = false
+    droppingtools = false
+    removingmeshhats = false
+    removingmeshtool = false
+    stopsitting = false
+    changingstate = false
+    bringingobj = false
+    bringingmod = false
 end)
  
+-- Kept for compatibility with the original script; it used to be a no-op
+-- self-assignment (prefix = prefix).
 function change()
-    prefix = prefix
-    speedfly = speedfly
 end
  
 function GetPlayer(String) -- Credit to Timeless/xFunnieuss
@@ -516,7 +607,11 @@ onGuarded(game:GetService('RunService').Stepped, function()
         end
     end
     if changingstate then
-        lplayer.Character.Humanoid:ChangeState(statechosen)
+        local humanoid = lplayer.Character and lplayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            local ok = pcall(function() humanoid:ChangeState(statechosen) end)
+            if not ok then changingstate = false end
+        end
     end
 end)
 onGuarded(game:GetService('RunService').Stepped, function()
@@ -804,7 +899,8 @@ local function Execute(msg)
         end
     end
     if string.sub(msg, 1, 8) == (prefix.."unorbit") then
-        lplayer.Character.HumanoidRootPart.Orbit:Destroy()
+        local root = lplayer.Character and lplayer.Character:FindFirstChild("HumanoidRootPart")
+        destroyNamed(root, "Orbit")
         noclip = false
     end
     if string.sub(msg, 1, 7) == (prefix.."fling ") then
@@ -828,25 +924,19 @@ local function Execute(msg)
     end
     if string.sub(msg, 1, 8) == (prefix.."unfling") then
         noclip = false
-        lplayer.Character.HumanoidRootPart.Fling:Destroy()
+        local root = lplayer.Character and lplayer.Character:FindFirstChild("HumanoidRootPart")
+        destroyNamed(root, "Fling")
         game:GetService("Workspace").CurrentCamera.CameraSubject = lplayer.Character.Head
         task.wait(0.4)
-        lplayer.Character.HumanoidRootPart.Fling:Destroy()
+        destroyNamed(root, "Fling")
     end
     if string.sub(msg, 1, 8) == (prefix.."fecheck") then
-        if true then
-            warn("FE is Enabled (Filtering Enabled)")
-            safeSetCore("SendNotification", {
-                Title = "FE is Enabled";
-                Text = "Filtering Enabled. Enjoy using SakuraVibes999's Reviz Admin!";
-            })
-        else
-            warn("FE is Disabled (Filtering Disabled) Consider using a different admin script.")
-            safeSetCore("SendNotification", {
-                Title = "FE is Disabled";
-                Text = "Filtering Disabled. Consider using a different admin script.";
-            })
-        end
+        -- Every live Roblox game is FilteringEnabled; the old branch was dead code.
+        warn("FE is Enabled (Filtering Enabled)")
+        safeSetCore("SendNotification", {
+            Title = "FE is Enabled";
+            Text = "Filtering Enabled. Enjoy using SakuraVibes999's Reviz Admin!";
+        })
     end
     if string.sub(msg, 1, 6) == (prefix.."void ") then
         for i,v in pairs(GetPlayer(string.sub(msg, 7))) do
@@ -890,22 +980,40 @@ local function Execute(msg)
         })
     end
     if string.sub(msg, 1, 7) == (prefix.."speed ") then
-        lplayer.Character.Humanoid.WalkSpeed = (string.sub(msg, 8))
+        local humanoid = lplayer.Character and lplayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.WalkSpeed = toNumber(string.sub(msg, 8), humanoid.WalkSpeed)
+        end
     end
     if string.sub(msg, 1, 4) == (prefix.."ws ") then
-        lplayer.Character.Humanoid.WalkSpeed = (string.sub(msg, 5))
+        local humanoid = lplayer.Character and lplayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.WalkSpeed = toNumber(string.sub(msg, 5), humanoid.WalkSpeed)
+        end
     end
     if string.sub(msg, 1, 11) == (prefix.."hipheight ") then
-        lplayer.Character.Humanoid.HipHeight = (string.sub(msg, 12))
+        local humanoid = lplayer.Character and lplayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.HipHeight = toNumber(string.sub(msg, 12), humanoid.HipHeight)
+        end
     end
     if string.sub(msg, 1, 4) == (prefix.."hh ") then
-        lplayer.Character.Humanoid.HipHeight = (string.sub(msg, 5))
+        local humanoid = lplayer.Character and lplayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.HipHeight = toNumber(string.sub(msg, 5), humanoid.HipHeight)
+        end
     end
     if string.sub(msg, 1, 11) == (prefix.."jumppower ") then
-        lplayer.Character.Humanoid.JumpPower = (string.sub(msg, 12))
+        local humanoid = lplayer.Character and lplayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.JumpPower = toNumber(string.sub(msg, 12), humanoid.JumpPower)
+        end
     end
     if string.sub(msg, 1, 4) == (prefix.."jp ") then
-        lplayer.Character.Humanoid.JumpPower = (string.sub(msg, 5))
+        local humanoid = lplayer.Character and lplayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.JumpPower = toNumber(string.sub(msg, 5), humanoid.JumpPower)
+        end
     end
     if string.sub(msg, 1, 8) == (prefix.."default") then
         lplayer.Character.Humanoid.JumpPower = 50
@@ -1053,11 +1161,20 @@ local function Execute(msg)
             lplayer.Character.HumanoidRootPart.CFrame = game:GetService("Players")[v.Name].Character.HumanoidRootPart.CFrame
         end
     end
-    if string.sub(msg, 1, 4) == (prefix.."fly") then
+    -- Exact match: the old prefix check also swallowed ":flyspeed".
+    if msg == (prefix.."fly") then
     repeat task.wait() until lplayer and lplayer.Character and lplayer.Character:FindFirstChild('HumanoidRootPart') and lplayer.Character:FindFirstChild('Humanoid')
     repeat task.wait() until mouse
-   
+
     local T = lplayer.Character.HumanoidRootPart
+    -- Never stack a second fly: drop the previous movers and key listeners.
+    destroyNamed(T, "RevizFlyBG")
+    destroyNamed(T, "RevizFlyBV")
+    for _, connection in ipairs(flyKeyConnections) do
+        pcall(function() connection:Disconnect() end)
+    end
+    flyKeyConnections = {}
+
     local CONTROL = {F = 0, B = 0, L = 0, R = 0}
     local lCONTROL = {F = 0, B = 0, L = 0, R = 0}
     local SPEED = speedget
@@ -1066,6 +1183,8 @@ local function Execute(msg)
         flying = true
         local BG = Instance.new('BodyGyro', T)
         local BV = Instance.new('BodyVelocity', T)
+        BG.Name = "RevizFlyBG"
+        BV.Name = "RevizFlyBV"
         BG.P = 9e4
         BG.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
         BG.CFrame = T.CFrame
@@ -1097,7 +1216,7 @@ local function Execute(msg)
                 lplayer.Character.Humanoid.PlatformStand = false
             end)
         end
-    mouse.KeyDown:Connect(function(KEY)
+    table.insert(flyKeyConnections, on(mouse.KeyDown, function(KEY)
         if KEY:lower() == 'w' then
             CONTROL.F = speedfly
         elseif KEY:lower() == 's' then
@@ -1107,8 +1226,8 @@ local function Execute(msg)
         elseif KEY:lower() == 'd' then
             CONTROL.R = speedfly
         end
-    end)
-    mouse.KeyUp:Connect(function(KEY)
+    end))
+    table.insert(flyKeyConnections, on(mouse.KeyUp, function(KEY)
         if KEY:lower() == 'w' then
             CONTROL.F = 0
         elseif KEY:lower() == 's' then
@@ -1118,12 +1237,20 @@ local function Execute(msg)
         elseif KEY:lower() == 'd' then
             CONTROL.R = 0
         end
-    end)
+    end))
     fly()
     end
     if string.sub(msg, 1, 6) == (prefix.."unfly") then
         flying = false
-        lplayer.Character.Humanoid.PlatformStand = false
+        local humanoid = lplayer.Character and lplayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then humanoid.PlatformStand = false end
+        local root = lplayer.Character and lplayer.Character:FindFirstChild("HumanoidRootPart")
+        destroyNamed(root, "RevizFlyBG")
+        destroyNamed(root, "RevizFlyBV")
+        for _, connection in ipairs(flyKeyConnections) do
+            pcall(function() connection:Disconnect() end)
+        end
+        flyKeyConnections = {}
     end
     if string.sub(msg, 1, 6) == (prefix.."chat ") then
         sendChat((string.sub(msg, 7)))
@@ -1212,28 +1339,50 @@ local function Execute(msg)
         lplayer.Character.Humanoid.Sit = true
     end
     if string.sub(msg, 1, 10) == (prefix.."bringobj ") then
-        local function bringobjw()
-        for i,obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
-        if obj.Name == (string.sub(msg, 11)) and obj:IsA("BasePart") then
-        obj.CFrame = lplayer.Character.HumanoidRootPart.CFrame
-        obj.CanCollide = false
-        obj.Transparency = 0.7
-        task.wait()
-        obj.CFrame = limb(lplayer.Character, "Left Leg").CFrame
-        task.wait()
-        obj.CFrame = limb(lplayer.Character, "Right Leg").CFrame
-        task.wait()
-        obj.CFrame = lplayer.Character["Head"].CFrame
+        local targetObjName = string.sub(msg, 11)
+        if targetObjName == "" then
+            safeSetCore("SendNotification", {
+            Title = "BringObj";
+            Text = "Usage: bringobj [object name]";
+            })
+        else
+            bringingobj = true
+            local function bringobjw()
+            for i,obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
+            if not bringingobj then return end
+            if obj.Name == targetObjName and obj:IsA("BasePart") then
+            obj.CFrame = lplayer.Character.HumanoidRootPart.CFrame
+            obj.CanCollide = false
+            obj.Transparency = 0.7
+            task.wait()
+            obj.CFrame = limb(lplayer.Character, "Left Leg").CFrame
+            task.wait()
+            obj.CFrame = limb(lplayer.Character, "Right Leg").CFrame
+            task.wait()
+            obj.CFrame = lplayer.Character["Head"].CFrame
+            end
+            end
+            end
+            -- Flag-driven, so it can actually be stopped; the old `while
+            -- task.wait() do` hung its thread forever and never reached the
+            -- notification below it.
+            task.spawn(function()
+                while bringingobj and task.wait() do
+                    local ok, err = pcall(bringobjw)
+                    if not ok then
+                        bringingobj = false
+                        warn("[reviz] bringobj stopped: " .. tostring(err))
+                    end
+                end
+            end)
+            safeSetCore("SendNotification", {
+            Title = "BringObj";
+            Text = "BringObj enabled. Use unbringobj to stop.";
+            })
         end
-        end
-        end
-        while task.wait() do
-            bringobjw()
-        end
-        safeSetCore("SendNotification", {
-        Title = "BringObj";
-        Text = "BringObj enabled.";
-        })
+    end
+    if string.sub(msg, 1, 11) == (prefix.."unbringobj") then
+        bringingobj = false
     end
     if string.sub(msg, 1, 7) == (prefix.."wsvis ") then
         vis = tonumber(string.sub(msg, 8)) or 0
@@ -1252,11 +1401,12 @@ local function Execute(msg)
         end
     end
     if string.sub(msg, 1, 11) == (prefix.."hypertotal") then
-        loadAsset("rbxassetid://1255063809")
-        safeSetCore("SendNotification", {
-        Title = "Success!";
-        Text = "HyperTotal GUI Loaded!";
-        })
+        if loadAsset("rbxassetid://1255063809") then
+            safeSetCore("SendNotification", {
+            Title = "Success!";
+            Text = "HyperTotal GUI Loaded!";
+            })
+        end
     end
     if string.sub(msg, 1, 5) == (prefix.."cmds") then
         showCommandList()
@@ -1301,7 +1451,8 @@ local function Execute(msg)
         })
     end
     if string.sub(msg, 1, 10) == (prefix.."nospinner") then
-        lplayer.Character.HumanoidRootPart.Spinner:Destroy()
+        local root = lplayer.Character and lplayer.Character:FindFirstChild("HumanoidRootPart")
+        destroyNamed(root, "Spinner")
     end
     if string.sub(msg, 1, 7) == (prefix.."reachd") then
         for i,v in pairs(game:GetService'Players'.LocalPlayer.Character:GetChildren())do
@@ -1468,14 +1619,15 @@ local function Execute(msg)
         end
     end
     if string.sub(msg, 1, 9) == (prefix.."unglitch") then
-        lplayer.Character.HumanoidRootPart.Glitch:Destroy()
+        local root = lplayer.Character and lplayer.Character:FindFirstChild("HumanoidRootPart")
+        destroyNamed(root, "Glitch")
         lplayer.Character.HumanoidRootPart.CFrame = CFrame.new(10000,0,10000)
         b = Instance.new("BodyForce")
         b.Parent = lplayer.Character.HumanoidRootPart
         b.Name = "unGlitch"
         b.Force = Vector3.new(0,-5000000,0)
         task.wait(2)
-        lplayer.Character.HumanoidRootPart.unGlitch:Destroy()
+        destroyNamed(root, "unGlitch")
     end
     if string.sub(msg, 1, 9) == (prefix.."grespawn") then
         lplayer.Character.Humanoid.Health = 0
@@ -1484,11 +1636,12 @@ local function Execute(msg)
         limb(lplayer.Character, "Torso").CFrame = CFrame.new(1000000,0,1000000)
     end
     if string.sub(msg, 1, 9) == (prefix.."explorer") then
-        loadDex()
-        safeSetCore("SendNotification", {
-        Title = "Success!";
-        Text = "DEX Explorer has loaded.";
-        })
+        if loadDex() then
+            safeSetCore("SendNotification", {
+            Title = "Success!";
+            Text = "DEX Explorer has loaded.";
+            })
+        end
     end
     if string.sub(msg, 1, 6) == (prefix.."anim ") then
         local Anim = Instance.new("Animation")
@@ -1497,11 +1650,12 @@ local function Execute(msg)
         track:Play(.1, 1, 1)
     end
     if string.sub(msg, 1, 8) == (prefix.."animgui") then
-        loadAsset("rbxassetid://1202558084")
-        safeSetCore("SendNotification", {
-        Title = "Success!";
-        Text = "Energize Animations GUI has loaded.";
-        })
+        if loadAsset("rbxassetid://1202558084") then
+            safeSetCore("SendNotification", {
+            Title = "Success!";
+            Text = "Energize Animations GUI has loaded.";
+            })
+        end
     end
     if string.sub(msg, 1, 8) == (prefix.."savepos") then
         saved = lplayer.Character.HumanoidRootPart.CFrame
@@ -1529,6 +1683,12 @@ local function Execute(msg)
     end
     if string.sub(msg, 1, 10) == (prefix.."bringmod ") then
         local targetModName = string.sub(msg, 11)
+        if targetModName == "" then
+            safeSetCore("SendNotification", {
+            Title = "BringMod";
+            Text = "Usage: bringmod [model name]";
+            })
+        else
         bringingmod = true
         local function bringmodw()
         for i,obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
@@ -1556,8 +1716,12 @@ local function Execute(msg)
         end)
         safeSetCore("SendNotification", {
         Title = "BringMod";
-        Text = "BringMod enabled.";
+        Text = "BringMod enabled. Use unbringmod to stop.";
         })
+        end
+    end
+    if string.sub(msg, 1, 11) == (prefix.."unbringmod") then
+        bringingmod = false
     end
     if string.sub(msg, 1, 8) == (prefix.."respawn") then
         local mod = Instance.new('Model', workspace) mod.Name = 're '..lplayer.Name
@@ -1607,11 +1771,12 @@ local function Execute(msg)
         end
     end
     if string.sub(msg, 1, 11) == (prefix.."opfinality") then
-        loadAsset("rbxassetid://1294358929")
-        safeSetCore("SendNotification", {
-        Title = "Success!";
-        Text = "OpFinality GUI has loaded.";
-        })
+        if loadAsset("rbxassetid://1294358929") then
+            safeSetCore("SendNotification", {
+            Title = "Success!";
+            Text = "OpFinality GUI has loaded.";
+            })
+        end
     end
     if string.sub(msg, 1, 8) == (prefix.."remotes") then
         remotes = true
@@ -1694,6 +1859,7 @@ local function Execute(msg)
     if string.sub(msg, 1, 10) == (prefix.."noremotes") then
         remotes = false
         added = false
+        clearRemotes()
         safeSetCore("SendNotification", {
         Title = "Printing Remotes Disabled";
         Text = "Type ;remotes to enable.";
@@ -1768,12 +1934,23 @@ local function Execute(msg)
         revizGuiOpen = false
         syncRevizToggle(false)
     end
-    if string.sub(msg, 1, 6) == (prefix.."reset") then
-        lplayer.Character.Head:Destroy()
+    -- Exact match so this can never swallow ":resetprefix".
+    if msg == (prefix.."reset") then
+        if lplayer.Character then
+            lplayer.Character:BreakJoints()
+        end
     end
     if string.sub(msg, 1, 7) == (prefix.."state ") then
-        statechosen = tonumber(string.sub(msg, 8)) or 0
-        changingstate = true
+        local chosen = tonumber(string.sub(msg, 8))
+        if chosen and chosen >= 0 and chosen <= 20 then
+            statechosen = chosen
+            changingstate = true
+        else
+            safeSetCore("SendNotification", {
+            Title = "State";
+            Text = "Usage: state [0-20]";
+            })
+        end
     end
     if string.sub(msg, 1, 9) == (prefix.."gravity ") then
         game:GetService("Workspace").Gravity = tonumber(string.sub(msg, 10)) or 196.2
@@ -1878,29 +2055,28 @@ local function Execute(msg)
         lplayer.Humanoid.Parent = lplayer.Character
     end
     if string.sub(msg, 1, 8) == (prefix.."prefix ") then
-        prefix = (string.sub(msg, 9, 9))
-        task.wait(0.1)
-        change()
-        task.wait(0.1)
-        safeSetCore("SendNotification", {
-        Title = "Prefix changed!";
-        Text = "Prefix is now "..prefix..". Use ;resetprefix to reset to ;";
-        })
+        local newPrefix = string.sub(msg, 9, 9)
+        if newPrefix ~= "" then
+            prefix = newPrefix
+            change()
+            safeSetCore("SendNotification", {
+            Title = "Prefix changed!";
+            Text = "Prefix is now " .. prefix .. ". Use " .. prefix .. "resetprefix to restore it.";
+            })
+        end
     end
-    if string.sub(msg, 1, 12) == (";resetprefix") then
-        prefix = ";"
-        task.wait(0.1)
+    -- Prefix-agnostic: Reviz.execute rewrites the documented ";resetprefix"
+    -- into <prefix>resetprefix, so this works whatever the prefix is now.
+    if msg == (prefix.."resetprefix") then
+        prefix = DEFAULT_PREFIX
         change()
-        task.wait(0.1)
         safeSetCore("SendNotification", {
         Title = "Prefix changed!";
-        Text = "Prefix is now "..prefix..". Make sure it's one key!";
+        Text = "Prefix reset to " .. prefix;
         })
     end
     if string.sub(msg, 1, 10) == (prefix.."flyspeed ") then
-        speedfly = string.sub(msg, 11)
-        task.wait()
-        change()
+        speedfly = toNumber(string.sub(msg, 11), 1)
     end
     if string.sub(msg, 1, 8) == (prefix.."carpet ") then
         for i,v in pairs(GetPlayer(string.sub(msg, 9))) do
@@ -2005,45 +2181,89 @@ task.spawn(function()
     end
 end)
 
-    on(mouse.KeyDown, function(Key)
-        if revizGuiOpen and Key == prefix and CMDBAR and CMDBAR.Parent then
-            CMDBAR:CaptureFocus()
+    -- Focus the standalone command bar when the prefix key is pressed while
+    -- the Reviz GUI is open. KeyCode based, because Mouse.KeyDown reports a
+    -- key *name* string ("semicolon") and never matched the prefix character.
+    on(game:GetService("UserInputService").InputBegan, function(input, processed)
+        if processed then return end
+        if not revizGuiOpen then return end
+        if not CMDBAR or not CMDBAR.Parent then return end
+        local key = prefixKeyCode()
+        if key and input.KeyCode == key then
+            task.defer(function() pcall(function() CMDBAR:CaptureFocus() end) end)
         end
     end)
 
-    local function buildRevizGui()
+    local function buildRevizGui(): boolean
         destroyRevizGuis()
-        local parent = getGuiParent()
 
         local sg = Instance.new("ScreenGui")
         local Frame = Instance.new("Frame")
         local cmdbar = Instance.new("TextBox")
         sg.Name = "RevizAdmin"
         sg.ResetOnSpawn = false
-        sg.Parent = parent
+        sg.DisplayOrder = 10
+        -- parentGui() tries gethui -> CoreGui -> PlayerGui and returns false
+        -- instead of throwing, so the toggle can report a real failure.
+        if not parentGui(sg) then
+            sg:Destroy()
+            return false
+        end
+        Frame.Name = "RevizBar"
         Frame.Parent = sg
         Frame.BackgroundColor3 = Color3.new(0.3, 0.1, 0.1)
         Frame.BackgroundTransparency = 0.3
-        Frame.Position = UDim2.new(0.5, -100, 0, 10)
-        Frame.Size = UDim2.new(0, 200, 0, 40)
+        Frame.Position = UDim2.new(0.5, -110, 0, 10)
+        Frame.Size = UDim2.new(0, 220, 0, 64)
         Frame.Active = true
         Frame.Draggable = true
         cmdbar.Name = "CMDBAR"
         cmdbar.Parent = Frame
         cmdbar.BackgroundColor3 = Color3.new(0.105882, 0.164706, 0.207843)
         cmdbar.BackgroundTransparency = 0.2
-        cmdbar.Size = UDim2.new(0, 180, 0, 20)
-        cmdbar.Position = UDim2.new(0.05, 0, 0.25, 0)
+        cmdbar.Size = UDim2.new(1, -12, 0, 22)
+        cmdbar.Position = UDim2.new(0, 6, 0, 4)
         cmdbar.Font = Enum.Font.SourceSansLight
         cmdbar.TextSize = 14
         cmdbar.TextColor3 = Color3.new(0.945098, 0.945098, 0.945098)
-        cmdbar.TextScaled = true
-        cmdbar.TextWrapped = true
-        cmdbar.Text = "Press " .. prefix .. " to type, Enter to execute"
+        cmdbar.PlaceholderColor3 = Color3.new(0.72, 0.72, 0.78)
+        cmdbar.PlaceholderText = "type a command, then Enter"
+        cmdbar.Text = ""
+        -- The hint used to live in .Text, so clicking the box and typing
+        -- appended to it and every command was garbage.
+        cmdbar.ClearTextOnFocus = true
+        cmdbar.TextScaled = false
+        cmdbar.TextWrapped = false
+
+        local status = Instance.new("TextLabel")
+        status.Name = "Status"
+        status.Parent = Frame
+        status.BackgroundTransparency = 1
+        status.Size = UDim2.new(1, -12, 0, 16)
+        status.Position = UDim2.new(0, 6, 0, 28)
+        status.Font = Enum.Font.SourceSans
+        status.TextSize = 12
+        status.TextColor3 = Color3.new(0.901961, 0.901961, 0.94902)
+        status.TextXAlignment = Enum.TextXAlignment.Left
+        status.Text = "ready"
+        statusLabel = status
+
+        local hint = Instance.new("TextLabel")
+        hint.Name = "Hint"
+        hint.Parent = Frame
+        hint.BackgroundTransparency = 1
+        hint.Size = UDim2.new(1, -12, 0, 14)
+        hint.Position = UDim2.new(0, 6, 0, 46)
+        hint.Font = Enum.Font.SourceSans
+        hint.TextSize = 11
+        hint.TextColor3 = Color3.new(0.72, 0.72, 0.78)
+        hint.TextXAlignment = Enum.TextXAlignment.Left
+        hint.Text = prefix .. " focuses  |  delcmdbar closes"
 
         cmdbar.FocusLost:Connect(function(enterPressed)
             if enterPressed then
-                local entry = cmdbar.Text
+                local entry = string.gsub(cmdbar.Text, "^%s+", "")
+                entry = string.gsub(entry, "%s+$", "")
                 if entry ~= "" then
                     Reviz.execute(entry)
                 end
@@ -2058,7 +2278,8 @@ end)
         local closegui = Instance.new("TextButton")
         cmdsGui.Name = "RevizAdminCMDS"
         cmdsGui.ResetOnSpawn = false
-        cmdsGui.Parent = parent
+        cmdsGui.DisplayOrder = 10
+        parentGui(cmdsGui)
         cmdsFrame.Name = "CMDSFRAME"
         cmdsFrame.Parent = cmdsGui
         cmdsFrame.Active = true
@@ -2072,14 +2293,17 @@ end)
         ScrollingFrame.BackgroundColor3 = Color3.new(0.160784, 0.160784, 0.203922)
         ScrollingFrame.BorderSizePixel = 0
         ScrollingFrame.Position = UDim2.new(0, 0, 0.0729999989, 0)
-        ScrollingFrame.Size = UDim2.new(1.04999995, 0, 0.92900002, 0)
-        ScrollingFrame.CanvasSize = UDim2.new(0, 0, 10, 0)
+        ScrollingFrame.Size = UDim2.new(1, 0, 0.927, 0)
+        ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+        ScrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        ScrollingFrame.ScrollBarThickness = 6
         TextLabel.Parent = ScrollingFrame
         TextLabel.BackgroundColor3 = Color3.new(1, 1, 1)
         TextLabel.BackgroundTransparency = 1
-        TextLabel.Size = UDim2.new(0.930000007, 0, 1, 0)
+        TextLabel.Size = UDim2.new(1, -6, 0, 0)
+        TextLabel.AutomaticSize = Enum.AutomaticSize.Y
         TextLabel.Font = Enum.Font.SourceSans
-        TextLabel.Text = table.concat(Commands, ",\n") .. ",\n This list of commands is NOT showing everything, go to my thread in the pastebin link to see ALL commands."
+        TextLabel.Text = "Current prefix: " .. prefix .. "\n\n" .. table.concat(Commands, ",\n") .. ",\n This list of commands is NOT showing everything, go to my thread in the pastebin link to see ALL commands."
         TextLabel.TextColor3 = Color3.new(1, 1, 1)
         TextLabel.TextSize = 15
         TextLabel.TextWrapped = true
@@ -2089,8 +2313,8 @@ end)
         closegui.Parent = cmdsFrame
         closegui.BackgroundColor3 = Color3.new(0.890196, 0.223529, 0.0588235)
         closegui.BorderSizePixel = 0
-        closegui.Position = UDim2.new(0.995000005, 0, 0, 0)
-        closegui.Size = UDim2.new(0.0545952693, 0, 0.0728644878, 0)
+        closegui.Position = UDim2.new(1, -28, 0, 4)
+        closegui.Size = UDim2.new(0, 24, 0, 24)
         closegui.Font = Enum.Font.SourceSansBold
         closegui.Text = "X"
         closegui.TextColor3 = Color3.new(1, 1, 1)
@@ -2105,6 +2329,7 @@ end)
         CMDS = cmdsGui
         CMDSFRAME = cmdsFrame
         revizGuiOpen = true
+        return true
     end
 
     showCommandList = function()
@@ -2135,15 +2360,31 @@ end)
 
     -- Accepts text with or without the prefix.
     Reviz.execute = function(text)
-        if type(text) ~= "string" or text == "" then return end
-        local full = text
-        if string.sub(full, 1, #prefix) ~= prefix then
-            full = prefix .. full
+        if type(text) ~= "string" then return end
+        text = string.gsub(text, "^%s+", "")
+        text = string.gsub(text, "%s+$", "")
+        if text == "" then return end
+        if executing then
+            -- Stops ;spam / ;chat re-entering through Player.Chatted.
+            return
         end
+        local full = text
+        -- The documented emergency command must work whatever the prefix is.
+        if text == ";resetprefix" or text == "resetprefix" then
+            full = prefix .. "resetprefix"
+        elseif string.sub(text, 1, #prefix) ~= prefix then
+            full = prefix .. text
+        end
+        executing = true
         local ok, err = pcall(Execute, full)
-        if not ok then
-            warn("[reviz] " .. tostring(full) .. " failed: " .. tostring(err))
-            pcall(Reviz.log, "[error] " .. tostring(err))
+        executing = false
+        if ok then
+            setStatus("ok: " .. full)
+        else
+            local message = tostring(err)
+            warn("[reviz] " .. tostring(full) .. " failed: " .. message)
+            pcall(Reviz.log, "[error] " .. message)
+            setStatus("error: " .. message)
         end
     end
 
@@ -2155,21 +2396,31 @@ end)
         return revizGuiOpen and ScreenGui ~= nil and ScreenGui.Parent ~= nil
     end
 
-    Reviz.open = function()
-        if Reviz.isOpen() then return end
-        buildRevizGui()
-        ModMenu.Notify("Reviz Admin", "Opened (press " .. prefix .. " to focus command bar).")
+    Reviz.open = function(): boolean
+        if Reviz.isOpen() then return true end
+        local ok, built = pcall(buildRevizGui)
+        if not ok or built == false then
+            local reason = if ok then "no GUI container available" else tostring(built)
+            warn("[reviz] open failed: " .. reason)
+            syncRevizToggle(false)
+            ModMenu.Notify("Reviz Admin", "Could not open: " .. reason)
+            return false
+        end
+        ModMenu.Notify("Reviz Admin", "Opened (press " .. prefix .. " to focus the bar).")
+        return true
     end
 
     Reviz.close = function()
         revizGuiOpen = false
         destroyRevizGuis()
-        -- Stop active annoying/loop states when closing the admin remake
+        statusLabel = nil
+        -- Stop active loop states when closing the admin remake
         spamming = false
         spammingpm = false
         cbring = false
         cbringall = false
         bringingmod = false
+        bringingobj = false
     end
 
     Reviz.toggle = function(state: boolean)
@@ -2185,6 +2436,12 @@ end)
     end
 
     on(lplayer.Chatted, function(msg)
+        -- Ignore chat the script sent itself.
+        local expiry = sentChat[msg]
+        if expiry then
+            sentChat[msg] = nil
+            if os.clock() <= expiry then return end
+        end
         if not Reviz.chatEnabled then return end
         if string.sub(msg, 1, #prefix) == prefix then
             Reviz.execute(msg)
@@ -2194,12 +2451,16 @@ end)
     -- Clean up any leftover Reviz GUIs from previous runs before toggle initializes
     destroyRevizGuis()
 
+    -- Only the live-reload harness provides STATE, so in a normal load this
+    -- never registers. Reviz.close() being correct is what actually guarantees
+    -- that toggling off stops the loops and removes the GUIs.
     if STATE and STATE.onCleanup then
         STATE.onCleanup(function()
             revizAlive = false
             bringingmod = false
-            Reviz.close()
-            ModMenu.State.clearConnections("reviz")
+            bringingobj = false
+            pcall(Reviz.close)
+            pcall(function() ModMenu.State.clearConnections("reviz") end)
             clearRemotes()
         end)
     end
