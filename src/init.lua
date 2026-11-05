@@ -137,6 +137,109 @@ do
 	end)
 end
 
+-- Console (SakuraVibes999's Reviz Admin)
+do
+	local p = Panels.console
+	local Reviz = ModMenu.Features.Reviz
+	C.section(p, "SakuraVibes999's Reviz Admin")
+
+	local info = Instance.new("TextLabel")
+	info.Size = UDim2.new(1, -8, 0, 34)
+	info.BackgroundTransparency = 1
+	info.TextWrapped = true
+	info.TextXAlignment = Enum.TextXAlignment.Left
+	info.TextYAlignment = Enum.TextYAlignment.Top
+	info.TextColor3 = T.text
+	info.Font = T.font
+	info.TextSize = 12
+	info.Text = "Type a command and press Enter. The prefix key (" .. Reviz.getPrefix() .. ") opens this tab and focuses the box."
+	info.Parent = p
+	T.textStroke(info, 0.65)
+
+	local input = Instance.new("TextBox")
+	input.Size = UDim2.new(1, -8, 0, 30)
+	input.BackgroundColor3 = T.surface
+	input.TextColor3 = T.text
+	input.PlaceholderText = "command, e.g. god / goto bob / speed 30"
+	input.PlaceholderColor3 = T.muted
+	input.Font = T.font
+	input.TextSize = 13
+	input.Text = ""
+	input.ClearTextOnFocus = false
+	input.BorderSizePixel = 0
+	input.Parent = p
+	T.corner(input, 6)
+	ModMenu.Menu.ConsoleInput = input
+
+	local output = Instance.new("TextLabel")
+	output.Size = UDim2.new(1, -8, 0, 0)
+	output.AutomaticSize = Enum.AutomaticSize.Y
+	output.BackgroundTransparency = 1
+	output.TextWrapped = true
+	output.TextXAlignment = Enum.TextXAlignment.Left
+	output.TextYAlignment = Enum.TextYAlignment.Top
+	output.TextColor3 = T.textSecondary
+	output.Font = T.font
+	output.TextSize = 12
+	output.Text = ""
+	output.Parent = p
+	T.textStroke(output, 0.7)
+
+	local lines = {}
+	local function render()
+		output.Text = table.concat(lines, "\n")
+	end
+	Reviz.log = function(text)
+		table.insert(lines, tostring(text))
+		while #lines > 200 do
+			table.remove(lines, 1)
+		end
+		render()
+	end
+	Reviz.onCommands = function()
+		for _, entry in ipairs(Reviz.commands) do
+			Reviz.log(entry)
+		end
+	end
+
+	local function run(text)
+		text = tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+		if text == "" then return end
+		Reviz.log("> " .. text)
+		Reviz.execute(text)
+	end
+
+	input.FocusLost:Connect(function(enterPressed)
+		if enterPressed then
+			run(input.Text)
+			input.Text = ""
+		end
+	end)
+
+	C.button(p, "Run Command", function()
+		run(input.Text)
+		input.Text = ""
+	end)
+	C.button(p, "List Commands", function() Reviz.showCommands() end)
+	C.button(p, "Clear Output", function()
+		lines = {}
+		render()
+	end)
+	C.toggle(p, "reviz.chat", "Chat Commands", true, function(v) Reviz.chatEnabled = v end)
+
+	C.section(p, "Quick Commands")
+	C.button(p, "Godmode", function() run("god") end)
+	C.button(p, "Noclip", function() run("noclip") end)
+	C.button(p, "Clip", function() run("clip") end)
+	C.button(p, "Invisible", function() run("invisible") end)
+	C.button(p, "Fly", function() run("fly") end)
+	C.button(p, "Unfly", function() run("unfly") end)
+	C.button(p, "Dex Explorer", function() run("explorer") end)
+	C.button(p, "Save Position", function() run("savepos") end)
+	C.button(p, "Load Position", function() run("loadpos") end)
+	C.button(p, "Respawn", function() run("respawn") end)
+end
+
 -- Settings
 do
 	local p = Panels.settings

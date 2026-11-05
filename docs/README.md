@@ -1,4 +1,4 @@
-# Mod Menu 0.3.0
+# Mod Menu 0.4.0
 
 Client-side Roblox mod menu generated from the supplied source files.
 
@@ -6,15 +6,30 @@ Client-side Roblox mod menu generated from the supplied source files.
 
 - `src/` - modular development source.
 - `dist/ModMenu.lua` - runnable single-file bundle for an executor.
+- `build.py` - concatenates `src/*.luau` into the bundle (`python build.py 0.4.0`).
+- `loader.lua` - fetches and runs each module from this repository.
 - `docs/` - usage notes.
 
 ## Usage
 
 1. Open your executor.
 2. Inject into a Roblox client.
-3. Execute `dist/ModMenu.lua`.
+3. Execute `dist/ModMenu.lua` (or `loader.lua`).
 4. Press the configured open key (default `RightShift`) to show/hide the menu.
 5. Use the `Settings` tab to change the open key and save settings.
+6. Use the `Console` tab for SakuraVibes999's Reviz Admin commands (see below).
+
+## Console (SakuraVibes999's Reviz Admin)
+
+The verified Reviz Admin command engine is embedded as
+`src/features/reviz.luau` and driven by the `Console` tab:
+
+- Type a command in the box and press Enter, or use the quick-command buttons.
+- Press the prefix key (default `:`) to open the Console tab and focus the box.
+- `List Commands` prints the full original command list into the panel.
+- `Chat Commands` (on by default) keeps the admin behaviour where a chat
+  message beginning with the prefix runs the command.
+- Everything the commands report also appears in the panel log.
 
 ## Notes
 
@@ -50,10 +65,17 @@ Client-side Roblox mod menu generated from the supplied source files.
   the toggle switches itself back off with a notification.
 - Effects are client-local unless the game deliberately exposes server behavior.
 - Server-authoritative values cannot be permanently changed from the client.
-- Integration from third-party sources was sanitized; destructive/global exploits were removed.
+- The `Console` tab embeds SakuraVibes999's Reviz Admin command set faithfully,
+  including legacy/destructive commands such as `shutdown`, `bang`, `spam` and
+  `pmspam`. Those are opt-in: nothing runs until a command is entered.
+- The four legacy `GetObjects` GUI loaders (`hypertotal`, `animgui`,
+  `opfinality`, `explorer`) degrade with a warning when their asset is gone.
+  `explorer` also tries a local `Dex Explorer (Embedded).lua` from the
+  executor's workspace folder.
 
 ## Credits
 
+- Command engine and branding: SakuraVibes999's Reviz Admin.
 - Service/capability/config approach adapted from Infinite Yield.
 - Window/container approach adapted from TopKek.
 - Animation entries adapted from ROBLOX Animation Gui V1.
