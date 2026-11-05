@@ -22,6 +22,15 @@ local function root(): BasePart?
 	return nil
 end
 
+-- Open the protection bypass window (when the Protection module is loaded)
+-- so the menu's own teleports are never reverted by anti-teleport.
+local function tpBypass(seconds: number?)
+	local prot = ModMenu.Features and ModMenu.Features.Protection
+	if prot and prot.bypass then
+		pcall(prot.bypass, seconds)
+	end
+end
+
 ModMenu.Features.Movement.setWalkSpeed = function(value: number)
 	local h = hum()
 	if h then
@@ -156,6 +165,7 @@ ModMenu.Features.Movement.teleportWaypoint = function(index: number)
 	local wp = ModMenu.State.waypoints[index]
 	local r = root()
 	if wp and r then
+		tpBypass(1)
 		r.CFrame = CFrame.new(wp.position)
 	end
 end
@@ -180,6 +190,7 @@ ModMenu.Features.Movement.clickTeleport = function(enabled: boolean)
 		if r then
 			local target = mouse.Hit
 			if target then
+				tpBypass(0.5)
 				r.CFrame = target * CFrame.new(0, 3, 0)
 			end
 		end
@@ -200,6 +211,7 @@ end
 ModMenu.Features.Movement.loadPosition = function()
 	local r = root()
 	if r and ModMenu.State.savedPosition then
+		tpBypass(1)
 		r.CFrame = CFrame.new(ModMenu.State.savedPosition)
 	end
 end
