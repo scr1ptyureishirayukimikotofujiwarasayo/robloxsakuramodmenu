@@ -273,6 +273,7 @@ local categories = {
 	{ id = "world", name = "World" },
 	{ id = "teleport", name = "Teleport" },
 	{ id = "character", name = "Character" },
+	{ id = "protection", name = "Protection" },
 	{ id = "utility", name = "Utility" },
 	{ id = "settings", name = "Settings" },
 }
