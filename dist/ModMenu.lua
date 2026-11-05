@@ -874,6 +874,7 @@ local categories = {
 	{ id = "world", name = "World" },
 	{ id = "teleport", name = "Teleport" },
 	{ id = "character", name = "Character" },
+	{ id = "protection", name = "Protection" },
 	{ id = "utility", name = "Utility" },
 	{ id = "settings", name = "Settings" },
 }
@@ -1020,6 +1021,15 @@ local function root(): BasePart?
 	return nil
 end
 
+-- Open the protection bypass window (when the Protection module is loaded)
+-- so the menu's own teleports are never reverted by anti-teleport.
+local function tpBypass(seconds: number?)
+	local prot = ModMenu.Features and ModMenu.Features.Protection
+	if prot and prot.bypass then
+		pcall(prot.bypass, seconds)
+	end
+end
+
 ModMenu.Features.Movement.setWalkSpeed = function(value: number)
 	local h = hum()
 	if h then
@@ -1154,6 +1164,7 @@ ModMenu.Features.Movement.teleportWaypoint = function(index: number)
 	local wp = ModMenu.State.waypoints[index]
 	local r = root()
 	if wp and r then
+		tpBypass(1)
 		r.CFrame = CFrame.new(wp.position)
 	end
 end
@@ -1178,6 +1189,7 @@ ModMenu.Features.Movement.clickTeleport = function(enabled: boolean)
 		if r then
 			local target = mouse.Hit
 			if target then
+				tpBypass(0.5)
 				r.CFrame = target * CFrame.new(0, 3, 0)
 			end
 		end
@@ -1198,6 +1210,7 @@ end
 ModMenu.Features.Movement.loadPosition = function()
 	local r = root()
 	if r and ModMenu.State.savedPosition then
+		tpBypass(1)
 		r.CFrame = CFrame.new(ModMenu.State.savedPosition)
 	end
 end
@@ -1612,11 +1625,23 @@ local Players = S.Players
 ModMenu.Features = ModMenu.Features or {}
 ModMenu.Features.Teleport = {}
 
+-- Open the protection bypass window (when the Protection module is loaded)
+-- so the menu's own teleports are never reverted by anti-teleport.
+local function tpBypass(seconds: number?)
+	local prot = ModMenu.Features and ModMenu.Features.Protection
+	if prot and prot.bypass then
+		pcall(prot.bypass, seconds)
+	end
+end
+
 ModMenu.Features.Teleport.toSpawn = function()
 	local r = (ModMenu.Services.Players.LocalPlayer.Character or {}).HumanoidRootPart
 	if S.Workspace:FindFirstChild("SpawnLocation") then
 		local sp = S.Workspace:FindFirstChild("SpawnLocation")
-		if sp and r then r.CFrame = sp.CFrame + Vector3.new(0, 3, 0) end
+		if sp and r then
+			tpBypass(1)
+			r.CFrame = sp.CFrame + Vector3.new(0, 3, 0)
+		end
 	end
 end
 
@@ -2142,6 +2167,17 @@ do
 	C.button(p, "Reset Movement", function() ModMenu.Features.Movement.resetMovement() end)
 end
 
+-- Protection
+do
+	local p = Panels.protection
+	C.section(p, "Anti-Fling")
+	C.toggle(p, "protection.antiFling", "Anti-Fling", false, function(v) ModMenu.Features.Protection.antiFling(v) end)
+	C.slider(p, "protection.flingThreshold", "Fling Velocity", 50, 5000, 400)
+	C.section(p, "Anti-Teleport")
+	C.toggle(p, "protection.antiTeleport", "Anti-Teleport", false, function(v) ModMenu.Features.Protection.antiTeleport(v) end)
+	C.slider(p, "protection.tpMaxStuds", "Max Studs Per Frame", 5, 500, 50)
+end
+
 -- Utility
 do
 	local p = Panels.utility
@@ -2158,6 +2194,10 @@ do
 	C.toggle(p, "utility.lockWorkspace", "Lock Workspace", false, function(v) ModMenu.Features.Utility.lockWorkspace(v) end)
 	C.toggle(p, "utility.toolGrabber", "Tool Grabber", false, function(v) ModMenu.Features.Utility.toolGrabber(v) end)
 	C.toggle(p, "utility.reach", "Tool Reach", false, function(v) ModMenu.Features.Utility.reach(v) end)
+	C.section(p, "Interactions")
+	C.toggle(p, "interaction.clickDetectors", "Auto Click Detectors", false, function(v) ModMenu.Features.Interaction.clickDetectorLoop(v) end)
+	C.toggle(p, "interaction.touch", "Auto Touch Parts", false, function(v) ModMenu.Features.Interaction.touchInterestLoop(v) end)
+	C.slider(p, "interaction.interval", "Fire Interval (s)", 0.05, 10, 1)
 	C.section(p, "Diagnostics")
 	C.button(p, "FE Check", function() ModMenu.Features.Utility.feCheck() end)
 	local players = {}
