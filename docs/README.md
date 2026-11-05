@@ -1,4 +1,4 @@
-# Mod Menu 0.1.0
+# Mod Menu 0.3.0
 
 Client-side Roblox mod menu generated from the supplied source files.
 
@@ -35,6 +35,19 @@ Client-side Roblox mod menu generated from the supplied source files.
 - **Reloads:** startup destroys any previous `ModMenu` ScreenGui and
   disconnects the previous run's input listeners, so re-executing the bundle
   never stacks two menus.
+- **Protection tab:** anti-fling watches the root part each Heartbeat and, when linear velocity
+  exceeds the slider (default 400 studs/s) or angular velocity exceeds 50 rad/s, zeroes the
+  momentum, unseats you, and snaps you back to the last safe pose (if moved more than 5 studs).
+  Anti-teleport reverts any single-frame displacement larger than its slider (default 50 studs),
+  rate-limiting its notifications. Both re-baseline on respawn and pause while an internal
+  bypass window is open, which Click TP, waypoints and saved positions set before moving you.
+  Anti-teleport can rubber-band against legitimate server teleports - turn it off in games
+  that teleport you by design.
+- **Utility > Interactions:** the auto loops fire every ClickDetector (`fireclickdetector`,
+  passing the part position) and every other part with a TouchTransmitter
+  (`firetouchinterest` begin+end pair from your root part) in the workspace once per interval
+  (slider, default 1s). Your own character is skipped. If the executor lacks either global,
+  the toggle switches itself back off with a notification.
 - Effects are client-local unless the game deliberately exposes server behavior.
 - Server-authoritative values cannot be permanently changed from the client.
 - Integration from third-party sources was sanitized; destructive/global exploits were removed.
