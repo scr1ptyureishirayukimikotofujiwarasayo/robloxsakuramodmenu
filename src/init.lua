@@ -143,7 +143,11 @@ do
 	local p = Panels.console
 	local Reviz = ModMenu.Features.Reviz
 	C.section(p, "SakuraVibes999's Reviz Admin")
-	C.toggle(p, "utility.reviz", "Reviz Admin Remake GUI", false, function(v) Reviz.toggle(v) end)
+	-- Deliberately a button, not a second toggle: two widgets sharing the
+	-- "utility.reviz" id fought over the state and the saved config.
+	C.button(p, "Open / Close Command Bar", function()
+		Reviz.toggle(not Reviz.isOpen())
+	end)
 
 	local info = Instance.new("TextLabel")
 	info.Size = UDim2.new(1, -8, 0, 34)

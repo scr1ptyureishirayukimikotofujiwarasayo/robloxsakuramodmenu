@@ -16,6 +16,25 @@ ModMenu.Features.Reviz = (function()
     local prefix = ":"
     local DEFAULT_PREFIX = ":"
 
+    -- Re-executing the bundle used to leave the previous copy's Chatted /
+    -- Stepped / InputBegan handlers and its four background loops alive: the
+    -- old module kept revizAlive = true, so commands ran several times and old
+    -- hotkeys stayed bound. Tear the previous copy down before this one wires
+    -- anything up. trackedConnections (below) makes this work even though
+    -- core/state.luau replaces ModMenu.State on every run.
+    do
+        local previous = _G.__revizCleanup
+        if type(previous) == "function" then
+            pcall(previous)
+        end
+        pcall(function()
+            _G.__revizCleanup = nil
+        end)
+        pcall(function()
+            ModMenu.State.clearConnections("reviz")
+        end)
+    end
+
     -- Mouse.KeyDown hands over a lowercase key-name string, never the prefix
     -- character, so the old `Key == prefix` check could never fire. Map the
     -- prefix character to a KeyCode instead.
@@ -57,7 +76,10 @@ ModMenu.Features.Reviz = (function()
     local revizGuiOpen = false
     local flyKeyConnections = {}
     local statusLabel: TextLabel? = nil
+    local hintLabel: TextLabel? = nil
     local executing = false
+    local executingToken = nil
+    local EXECUTE_TIMEOUT = 10
     local ScreenGui: ScreenGui? = nil
     local CMDBAR: TextBox? = nil
     local CMDS: ScreenGui? = nil
@@ -120,6 +142,7 @@ local function destroyRevizGuis()
     CMDS = nil
     CMDSFRAME = nil
     statusLabel = nil
+    hintLabel = nil
 end
 
 local function syncRevizToggle(state: boolean)
@@ -135,8 +158,13 @@ local function syncRevizToggle(state: boolean)
     end
 end
 
+-- Connections are tracked locally as well as in ModMenu.State, because
+-- core/state.luau rebuilds ModMenu.State on every execution and a cleanup
+-- running from the previous copy would otherwise look at the new (empty) list.
+local trackedConnections = {}
 local function on(signal, handler)
     local connection = signal:Connect(handler)
+    table.insert(trackedConnections, connection)
     table.insert(ModMenu.State.getConnections("reviz"), connection)
     return connection
 end
@@ -462,6 +490,48 @@ end
         '[133] unbringmod -- Stops ;bringmod',
     }
 
+    -- Names parsed out of the command list above. Used only to tell the user
+    -- that a command was not recognised - previously every typo reported "ok"
+    -- and did nothing. Dispatch itself is unchanged.
+    local knownCommands
+    do
+        local set = {}
+        for _, entry in ipairs(Commands) do
+            local body = string.match(entry, "^%[%d+%]%s*(.-)%s*%-%-")
+                or string.match(entry, "^%[%d+%]%s*(.+)$")
+            if body then
+                body = string.gsub(body, "%[.-%]", "")
+                for variant in string.gmatch(body, "[^/]+") do
+                    variant = string.gsub(variant, "^%s+", "")
+                    variant = string.gsub(variant, "%s+$", "")
+                    variant = string.gsub(variant, "%s+", " ")
+                    if variant ~= "" then
+                        set[variant] = true
+                    end
+                end
+            end
+        end
+        -- Implemented but missing from the list.
+        set["reachd"] = true
+        knownCommands = set
+    end
+
+    local function isKnownCommand(full: string): boolean
+        local count = 0
+        for _ in pairs(knownCommands) do count += 1 end
+        if count < 50 then
+            -- Parsing failed; never block a command because of it.
+            return true
+        end
+        local bare = string.sub(full, #prefix + 1)
+        for name in pairs(knownCommands) do
+            if bare == name or string.sub(bare, 1, #name + 1) == name .. " " then
+                return true
+            end
+        end
+        return false
+    end
+
 speedget = 1
  
 lplayer = game:GetService("Players").LocalPlayer
@@ -490,6 +560,9 @@ end)
 -- Kept for compatibility with the original script; it used to be a no-op
 -- self-assignment (prefix = prefix).
 function change()
+    if hintLabel and hintLabel.Parent then
+        hintLabel.Text = prefix .. " focuses  |  delcmdbar closes"
+    end
 end
  
 function GetPlayer(String) -- Credit to Timeless/xFunnieuss
@@ -1106,6 +1179,13 @@ local function Execute(msg)
     if string.sub(msg, 1, 10) == (prefix.."invisible") then -- Credit to Timeless
         Local = game:GetService('Players').LocalPlayer
         Char  = Local.Character
+        if not (Char and Char:FindFirstChild("HumanoidRootPart")) then
+            safeSetCore("SendNotification", {
+            Title = "Invisible";
+            Text = "No character to hide yet - wait until you respawn.";
+            })
+            return
+        end
         touched,tpdback = false, false
         box = Instance.new('Part',workspace)
         box.Anchored = true
@@ -1131,7 +1211,6 @@ local function Execute(msg)
                 end
             end
         end)
-        repeat task.wait() until Char
         loc = Char.HumanoidRootPart.Position
         Char:MoveTo(box.Position + Vector3.new(0,.5,0))
         safeSetCore("SendNotification", {
@@ -1163,10 +1242,20 @@ local function Execute(msg)
     end
     -- Exact match: the old prefix check also swallowed ":flyspeed".
     if msg == (prefix.."fly") then
-    repeat task.wait() until lplayer and lplayer.Character and lplayer.Character:FindFirstChild('HumanoidRootPart') and lplayer.Character:FindFirstChild('Humanoid')
-    repeat task.wait() until mouse
+    -- Do not block the command engine waiting for a character that may never
+    -- exist. This `repeat task.wait()` used to hang :fly and leave `executing`
+    -- stuck, which silently discarded every later command.
+    local flyChar = lplayer and lplayer.Character
+    local flyRoot = flyChar and flyChar:FindFirstChild('HumanoidRootPart')
+    if not (flyRoot and flyChar:FindFirstChild('Humanoid') and mouse) then
+        safeSetCore("SendNotification", {
+        Title = "Fly";
+        Text = "No character to fly yet - wait until you respawn.";
+        })
+        return
+    end
 
-    local T = lplayer.Character.HumanoidRootPart
+    local T = flyRoot
     -- Never stack a second fly: drop the previous movers and key listeners.
     destroyNamed(T, "RevizFlyBG")
     destroyNamed(T, "RevizFlyBV")
@@ -2259,6 +2348,7 @@ end)
         hint.TextColor3 = Color3.new(0.72, 0.72, 0.78)
         hint.TextXAlignment = Enum.TextXAlignment.Left
         hint.Text = prefix .. " focuses  |  delcmdbar closes"
+        hintLabel = hint
 
         cmdbar.FocusLost:Connect(function(enterPressed)
             if enterPressed then
@@ -2358,13 +2448,14 @@ end)
         return prefix
     end
 
-    -- Accepts text with or without the prefix.
-    Reviz.execute = function(text)
+    -- Accepts text with or without the prefix. `fromChat` marks Player.Chatted
+    -- input, which is the only source that needs the re-entrancy guard.
+    Reviz.execute = function(text, fromChat)
         if type(text) ~= "string" then return end
         text = string.gsub(text, "^%s+", "")
         text = string.gsub(text, "%s+$", "")
         if text == "" then return end
-        if executing then
+        if fromChat and executing then
             -- Stops ;spam / ;chat re-entering through Player.Chatted.
             return
         end
@@ -2372,12 +2463,46 @@ end)
         -- The documented emergency command must work whatever the prefix is.
         if text == ";resetprefix" or text == "resetprefix" then
             full = prefix .. "resetprefix"
-        elseif string.sub(text, 1, #prefix) ~= prefix then
-            full = prefix .. text
+        else
+            -- The original admin documents its commands with ';' while the
+            -- live prefix is ':'. Accept either and rewrite it to the live
+            -- prefix; blindly prepending produced ":;god", which matched no
+            -- command but still reported "ok".
+            local first = string.sub(text, 1, 1)
+            if first == ";" or first == ":" then
+                full = prefix .. string.sub(text, 2)
+            elseif string.sub(text, 1, #prefix) ~= prefix then
+                full = prefix .. text
+            end
+        end
+        if full == prefix then return end
+        if not isKnownCommand(full) then
+            if not fromChat then
+                warn("[reviz] unknown command: " .. tostring(full))
+                pcall(Reviz.log, "[unknown] " .. text .. " (type cmds for the list)")
+                setStatus("unknown: " .. text)
+            end
+            return
         end
         executing = true
+        local token = {}
+        executingToken = token
+        -- A command that waits forever (:fly with no character) used to leave
+        -- `executing` true, which silently discarded every later command.
+        task.delay(EXECUTE_TIMEOUT, function()
+            if executingToken == token then
+                executing = false
+                executingToken = nil
+                warn("[reviz] command timed out: " .. tostring(full))
+                pcall(Reviz.log, "[timeout] " .. tostring(full))
+                setStatus("timeout: " .. tostring(full))
+            end
+        end)
         local ok, err = pcall(Execute, full)
-        executing = false
+        if executingToken == token then
+            executing = false
+            executingToken = nil
+        end
         if ok then
             setStatus("ok: " .. full)
         else
@@ -2411,16 +2536,66 @@ end)
     end
 
     Reviz.close = function()
+        local wasFlying = flying
+        local hadState = revizGuiOpen or flying or noclip or spin
         revizGuiOpen = false
         destroyRevizGuis()
         statusLabel = nil
-        -- Stop active loop states when closing the admin remake
+        hintLabel = nil
+        -- Stop every transient loop the admin can leave running. Closing the
+        -- GUI used to keep fly active (PlatformStand still on) together with
+        -- its WASD listeners, so the player stayed floating with no bar left
+        -- to type "unfly" into.
         spamming = false
         spammingpm = false
         cbring = false
         cbringall = false
         bringingmod = false
         bringingobj = false
+        flying = false
+        noclip = false
+        spin = false
+        followed = false
+        traill = false
+        annoying = false
+        hwalk = false
+        staring = false
+        banpl = false
+        changingstate = false
+        chatlogs = false
+        clickdel = false
+        clickgoto = false
+        gettingtools = false
+        droppinghats = false
+        droppingtools = false
+        removingmeshhats = false
+        removingmeshtool = false
+        stopsitting = false
+
+        for _, connection in ipairs(flyKeyConnections) do
+            pcall(function() connection:Disconnect() end)
+        end
+        flyKeyConnections = {}
+
+        -- Only touch the character when an admin state was actually active;
+        -- a plain toggle at startup must not delete unrelated parts.
+        if hadState then
+            local char = lplayer and lplayer.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if root then
+                destroyNamed(root, "RevizFlyBG")
+                destroyNamed(root, "RevizFlyBV")
+                destroyNamed(root, "Orbit")
+                destroyNamed(root, "Fling")
+                destroyNamed(root, "Spinner")
+            end
+            -- Only release PlatformStand if Reviz's own fly held it; otherwise a
+            -- saved/menu Platform Stand setting would be cleared by a plain toggle.
+            local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+            if wasFlying and humanoid then
+                humanoid.PlatformStand = false
+            end
+        end
     end
 
     Reviz.toggle = function(state: boolean)
@@ -2433,6 +2608,13 @@ end)
                 ModMenu.Notify("Reviz Admin", "Closed.")
             end
         end
+        -- Make the canonical menu state (and the saved config) match reality
+        -- whichever entry point was used: menu toggle, console button or
+        -- :delcmdbar. Skip the write when nothing actually changed.
+        local actual = Reviz.isOpen()
+        if ModMenu.State.toggles["utility.reviz"] ~= actual then
+            syncRevizToggle(actual)
+        end
     end
 
     on(lplayer.Chatted, function(msg)
@@ -2443,26 +2625,36 @@ end)
             if os.clock() <= expiry then return end
         end
         if not Reviz.chatEnabled then return end
-        if string.sub(msg, 1, #prefix) == prefix then
-            Reviz.execute(msg)
+        local first = string.sub(msg, 1, 1)
+        if first == prefix or first == ";" or first == ":" then
+            Reviz.execute(msg, true)
         end
     end)
 
     -- Clean up any leftover Reviz GUIs from previous runs before toggle initializes
     destroyRevizGuis()
 
-    -- Only the live-reload harness provides STATE, so in a normal load this
-    -- never registers. Reviz.close() being correct is what actually guarantees
-    -- that toggling off stops the loops and removes the GUIs.
+    -- Registered on the executor environment so the *next* execution of this
+    -- bundle can tear this copy down (see the top of the module), and with the
+    -- live-reload harness when it provides STATE.
+    local function revizCleanup()
+        revizAlive = false
+        bringingmod = false
+        bringingobj = false
+        pcall(Reviz.close)
+        for _, connection in ipairs(trackedConnections) do
+            pcall(function() connection:Disconnect() end)
+        end
+        table.clear(trackedConnections)
+        pcall(function() ModMenu.State.clearConnections("reviz") end)
+        clearRemotes()
+    end
+
+    pcall(function()
+        _G.__revizCleanup = revizCleanup
+    end)
     if STATE and STATE.onCleanup then
-        STATE.onCleanup(function()
-            revizAlive = false
-            bringingmod = false
-            bringingobj = false
-            pcall(Reviz.close)
-            pcall(function() ModMenu.State.clearConnections("reviz") end)
-            clearRemotes()
-        end)
+        STATE.onCleanup(revizCleanup)
     end
 
     return Reviz

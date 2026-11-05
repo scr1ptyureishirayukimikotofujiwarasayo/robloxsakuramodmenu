@@ -1,4 +1,4 @@
-# Mod Menu 0.4.0
+# Mod Menu 0.4.2
 
 Client-side Roblox mod menu generated from the supplied source files.
 
@@ -23,14 +23,16 @@ Client-side Roblox mod menu generated from the supplied source files.
 
 The verified Reviz Admin remake is embedded as `src/features/reviz.luau` and can be used both as a toggleable standalone GUI (`RevizAdmin` command bar + `RevizAdminCMDS` window) and from the `Console` tab:
 
-- Toggle `Reviz Admin Remake` under `Utility > Scripts & Explorer` (or `Console`) to open/close the original draggable Reviz command bar and commands window.
+- Toggle `Reviz Admin Remake` under `Utility > Scripts & Explorer`, or press `Open / Close Command Bar` in `Console`, to open/close the original draggable Reviz command bar and commands window.
 - Type a command in the Console box (or Reviz command bar) and press Enter, or use the quick-command buttons.
+- Both the live prefix (`:`) and the historical `;` prefix work: `;god` and `god` run the same command. Unknown commands now report `unknown` instead of silently doing nothing.
+- Turning the toggle off also stops fly/noclip/spin/loops and removes the admin-created body movers, not just the window.
 - Press the prefix key (default `:`) to focus the Reviz command bar when open, or to open the Console tab and focus its box.
 - `resetprefix` restores the prefix no matter what it is currently set to, and `unbringobj` / `unbringmod` stop the bring loops.
 - The standalone bar shows the last command result (or error) under the input, since the full log lives in the Console tab.
 - `List Commands` opens the Reviz commands window (if enabled) and prints the full original command list into the panel.
 - `Chat Commands` (on by default) keeps the admin behaviour where a chat
-  message beginning with the prefix runs the command.
+  message beginning with the prefix (or the historical `;`) runs the command.
 - Everything the commands report also appears in the panel log.
 
 ## Notes
