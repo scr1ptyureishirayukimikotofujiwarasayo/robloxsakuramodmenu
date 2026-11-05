@@ -7,11 +7,23 @@ local Players = S.Players
 ModMenu.Features = ModMenu.Features or {}
 ModMenu.Features.Teleport = {}
 
+-- Open the protection bypass window (when the Protection module is loaded)
+-- so the menu's own teleports are never reverted by anti-teleport.
+local function tpBypass(seconds: number?)
+	local prot = ModMenu.Features and ModMenu.Features.Protection
+	if prot and prot.bypass then
+		pcall(prot.bypass, seconds)
+	end
+end
+
 ModMenu.Features.Teleport.toSpawn = function()
 	local r = (ModMenu.Services.Players.LocalPlayer.Character or {}).HumanoidRootPart
 	if S.Workspace:FindFirstChild("SpawnLocation") then
 		local sp = S.Workspace:FindFirstChild("SpawnLocation")
-		if sp and r then r.CFrame = sp.CFrame + Vector3.new(0, 3, 0) end
+		if sp and r then
+			tpBypass(1)
+			r.CFrame = sp.CFrame + Vector3.new(0, 3, 0)
+		end
 	end
 end
 
