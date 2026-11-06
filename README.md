@@ -34,7 +34,7 @@ The menu is organised into tabs. What each one currently does:
   seats and snaps you back to your last safe position) and `Anti-Teleport` (reverts
   single-frame moves larger than the slider). The menu's own teleports are exempted
   through an internal bypass window.
-- **Utility** - Dex Explorer, Click Teleport, Save / Load Position, Workspace Visibility,
+- **Utility** - Dex Explorer, Reviz Admin, Click Teleport, Save / Load Position, Workspace Visibility,
   Restore Workspace, Click Delete (reversible), Lock Workspace, Tool Grabber, Tool Reach,
   plus `Interactions` (`Auto Click Detectors` and `Auto Touch Parts`) and diagnostics
   (`FE Check`, `Player Info`).
@@ -51,6 +51,10 @@ The menu is organised into tabs. What each one currently does:
   notification if the executor lacks them.
 - `Reset Toggles` resets the stored toggle state only; reload the script for the change to
   take effect on running features.
+- **Reviz Admin:** Utilities > `Reviz Admin` fetches `reviz.lua` from the repo and runs it
+  through `loadstring`, dropping in the revived Reviz command bar (prefix `;`). Turning the
+  toggle off calls the script's own `RevizAdminUnload` hook. Press `;` to focus the bar, or
+  `;cmds` for the command list. Requires network access and `reviz.lua` at the repo root.
 - **Background image:** the menu loads `ModMenuBackground.png` (or `picture.png`) from the
   executor's workspace folder via `getcustomasset`, auto-downloading `picture.png` if
   missing. If `getcustomasset` is unavailable it falls back to the uploaded decal id in

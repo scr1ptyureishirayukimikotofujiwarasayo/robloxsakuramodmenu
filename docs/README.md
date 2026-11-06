@@ -30,7 +30,7 @@ Client-side Roblox mod menu generated from the supplied source files.
 - **Character** - Hip Height, `Platform Stand`, `Invisible`, `No Limbs` / `No Arms` / `No Legs`,
   `Block Hats`, View Player, Unview, Reset Movement.
 - **Protection** - `Anti-Fling` and `Anti-Teleport` (see Notes).
-- **Utility** - Dex Explorer, Click Teleport, Save / Load Position, Workspace Visibility,
+- **Utility** - Dex Explorer, Reviz Admin, Click Teleport, Save / Load Position, Workspace Visibility,
   Restore Workspace, Click Delete (reversible), Lock Workspace, Tool Grabber, Tool Reach,
   `Interactions` and diagnostics (`FE Check`, `Player Info`).
 - **Settings** - Open Key, Hide Other GUIs, Background Image on/off and brightness,
@@ -71,6 +71,10 @@ Client-side Roblox mod menu generated from the supplied source files.
   notification.
 - **Reset Toggles** resets the stored toggle state only; reload the script for the change to
   take effect on running features.
+- **Reviz Admin:** Utilities > `Reviz Admin` fetches `reviz.lua` from the repo and runs it
+  through `loadstring`, loading the revived Reviz command bar (prefix `;`). Turning it off
+  calls the script's `RevizAdminUnload` hook. Press `;` to focus the bar, or `;cmds` for the
+  command list. Requires network access and `reviz.lua` at the repo root.
 - Effects are client-local unless the game deliberately exposes server behavior.
 - Server-authoritative values cannot be permanently changed from the client.
 

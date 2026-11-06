@@ -33,6 +33,7 @@ ORDER = [
     "features/interaction",
     "features/misc",
     "features/dex",
+    "features/reviz",
     "init",
 ]
 

@@ -39,6 +39,7 @@ run("src/features/protection.lua")
 run("src/features/interaction.lua")
 run("src/features/misc.lua")
 run("src/features/dex.lua")
+run("src/features/reviz.lua")
 run("src/init.lua")
 
 return _G.ModMenu
