@@ -118,7 +118,7 @@ do
 	C.section(p, "Scripts & Explorer")
 	C.toggle(p, "utility.dex", "Dex Explorer", false, function(v) ModMenu.Features.Dex.toggle(v) end)
 	C.toggle(p, "utility.reviz", "Reviz Admin", false, function(v) ModMenu.Features.Reviz.toggle(v) end)
-	C.toggle(p, "utility.shattervast", "ShatterVast Admin", false, function(v) ModMenu.Features.Shattervast.toggle(v) end)
+	C.toggle(p, "utility.shattervast", "Grac3Haz3Lion's ShatterVast Admin", false, function(v) ModMenu.Features.Shattervast.toggle(v) end)
 	C.section(p, "Movement Tools")
 	C.toggle(p, "utility.clickTP", "Click Teleport", false, function(v) ModMenu.Features.Movement.clickTeleport(v) end)
 	C.button(p, "Save Position", function() ModMenu.Features.Movement.savePosition() end)

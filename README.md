@@ -34,7 +34,7 @@ The menu is organised into tabs. What each one currently does:
   seats and snaps you back to your last safe position) and `Anti-Teleport` (reverts
   single-frame moves larger than the slider). The menu's own teleports are exempted
   through an internal bypass window.
-- **Utility** - Dex Explorer, Reviz Admin, ShatterVast Admin, Click Teleport, Save / Load Position, Workspace Visibility,
+- **Utility** - Dex Explorer, Reviz Admin, Grac3Haz3Lion's ShatterVast Admin, Click Teleport, Save / Load Position, Workspace Visibility,
   Restore Workspace, Click Delete (reversible), Lock Workspace, Tool Grabber, Tool Reach,
   plus `Interactions` (`Auto Click Detectors` and `Auto Touch Parts`) and diagnostics
   (`FE Check`, `Player Info`).
@@ -61,8 +61,8 @@ The menu is organised into tabs. What each one currently does:
   through `loadstring`, dropping in the revived Reviz command bar (prefix `;`). Turning the
   toggle off calls the script's own `RevizAdminUnload` hook. Press `;` to focus the bar, or
   `;cmds` for the command list. Requires network access and `reviz.lua` at the repo root.
-- **ShatterVast Admin:** Utilities > `ShatterVast Admin` is a separate, optional admin script
-  (independent from Reviz). It fetches `shattervast.lua` from the repo and runs the revived
+- **Grac3Haz3Lion's ShatterVast Admin:** Utilities > `Grac3Haz3Lion's ShatterVast Admin` is a separate, optional admin script
+  (independent from Reviz). It fetches `shattervast.lua` from the repo and runs the improved
   ShatterVast command bar (prefix `;`). Turning it off calls the script's `ShatterVastUnload`
   hook; re-enabling cleans up the previous run first, so bars never stack. Press `;` to focus
   the bar, or `;cmds` for the command list. Both ShatterVast and Reviz use the `;` prefix, so
