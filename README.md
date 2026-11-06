@@ -1,4 +1,4 @@
-# Mod Menu 0.4.4
+# Mod Menu 0.4.2
 
 Client-side Roblox mod menu generated from the supplied source files.
 
@@ -34,13 +34,12 @@ The menu is organised into tabs. What each one currently does:
   seats and snaps you back to your last safe position) and `Anti-Teleport` (reverts
   single-frame moves larger than the slider). The menu's own teleports are exempted
   through an internal bypass window.
-- **Utility** - Dex Explorer, Reviz Admin, Click Teleport, Save / Load Position, Workspace Visibility,
+- **Utility** - Dex Explorer, Reviz Admin, ShatterVast Admin, Click Teleport, Save / Load Position, Workspace Visibility,
   Restore Workspace, Click Delete (reversible), Lock Workspace, Tool Grabber, Tool Reach,
   plus `Interactions` (`Auto Click Detectors` and `Auto Touch Parts`) and diagnostics
   (`FE Check`, `Player Info`).
 - **Settings** - Open Key, Hide Other GUIs, Background Image on/off and brightness,
-  and Persistence: `Auto-Save`, `Remember Toggles on Load`, `Save Now`,
-  `Reset Toggles Now`, `Wipe Saved Config`.
+  Save Settings, Reset Toggles.
 
 ## Notes
 
@@ -50,17 +49,18 @@ The menu is organised into tabs. What each one currently does:
   the workspace on a configurable interval. They require the `fireclickdetector` /
   `firetouchinterest` executor globals; the toggles turn themselves back off with a
   notification if the executor lacks them.
-- **Persistence:** by default `Remember Toggles on Load` is **off**, so every run (including a
-  server hop) starts with all feature toggles off - only non-feature settings (open key,
-  accent, background, waypoints, saved position) persist. Turn `Remember Toggles on Load` on to
-  restore active features across runs. `Auto-Save` (default on) writes `ModMenuConfig.json` on
-  every change; turn it off to persist only when you press `Save Now`. `Reset Toggles Now`
-  switches every feature off immediately, and `Wipe Saved Config` deletes the file and resets
-  in-memory state.
+- `Reset Toggles` resets the stored toggle state only; reload the script for the change to
+  take effect on running features.
 - **Reviz Admin:** Utilities > `Reviz Admin` fetches `reviz.lua` from the repo and runs it
   through `loadstring`, dropping in the revived Reviz command bar (prefix `;`). Turning the
   toggle off calls the script's own `RevizAdminUnload` hook. Press `;` to focus the bar, or
   `;cmds` for the command list. Requires network access and `reviz.lua` at the repo root.
+- **ShatterVast Admin:** Utilities > `ShatterVast Admin` is a separate, optional admin script
+  (independent from Reviz). It fetches `shattervast.lua` from the repo and runs the revived
+  ShatterVast command bar (prefix `;`). Turning it off calls the script's `ShatterVastUnload`
+  hook; re-enabling cleans up the previous run first, so bars never stack. Press `;` to focus
+  the bar, or `;cmds` for the command list. Both ShatterVast and Reviz use the `;` prefix, so
+  enable only one at a time.
 - **Background image:** the menu loads `ModMenuBackground.png` (or `picture.png`) from the
   executor's workspace folder via `getcustomasset`, auto-downloading `picture.png` if
   missing. If `getcustomasset` is unavailable it falls back to the uploaded decal id in

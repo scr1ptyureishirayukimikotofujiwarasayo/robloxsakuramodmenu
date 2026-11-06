@@ -34,6 +34,7 @@ ORDER = [
     "features/misc",
     "features/dex",
     "features/reviz",
+    "features/shattervast",
     "init",
 ]
 
