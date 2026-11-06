@@ -30,7 +30,7 @@ Client-side Roblox mod menu generated from the supplied source files.
 - **Character** - Hip Height, `Platform Stand`, `Invisible`, `No Limbs` / `No Arms` / `No Legs`,
   `Block Hats`, View Player, Unview, Reset Movement.
 - **Protection** - `Anti-Fling` and `Anti-Teleport` (see Notes).
-- **Utility** - Dex Explorer, Reviz Admin, Grac3Haz3Lion's ShatterVast Admin, Click Teleport, Save / Load Position, Workspace Visibility,
+- **Utility** - Dex Explorer, SakuraVibes999's Reviz Admin, Grac3Haz3Lion's ShatterVast Admin, Click Teleport, Save / Load Position, Workspace Visibility,
   Restore Workspace, Click Delete (reversible), Lock Workspace, Tool Grabber, Tool Reach,
   `Interactions` and diagnostics (`FE Check`, `Player Info`).
 - **Settings** - Open Key, Hide Other GUIs, Background Image on/off and brightness,
@@ -76,8 +76,8 @@ Client-side Roblox mod menu generated from the supplied source files.
   across runs. `Auto-Save` (default on) writes `ModMenuConfig.json` on every change; turn it
   off to persist only when you press `Save Now`. `Reset Toggles Now` switches every feature off
   immediately, and `Wipe Saved Config` deletes the file and resets in-memory state.
-- **Reviz Admin:** Utilities > `Reviz Admin` fetches `reviz.lua` from the repo and runs it
-  through `loadstring`, loading the revived Reviz command bar (prefix `;`). Turning it off
+- **SakuraVibes999's Reviz Admin:** Utilities > `SakuraVibes999's Reviz Admin` fetches `reviz.lua` from the repo and runs it
+  through `loadstring`, loading the revived SakuraVibes999's Reviz command bar (prefix `;`). Turning it off
   calls the script's `RevizAdminUnload` hook. Press `;` to focus the bar, or `;cmds` for the
   command list. Requires network access and `reviz.lua` at the repo root.
 - **Grac3Haz3Lion's ShatterVast Admin:** Utilities > `Grac3Haz3Lion's ShatterVast Admin` is a separate, optional admin script
