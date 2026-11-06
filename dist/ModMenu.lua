@@ -2185,7 +2185,7 @@ end
 -- ===== src\features\reviz.lua =====
 --!strict
 -- features/reviz.luau
--- Toggleable Reviz Admin: fetches the script from the repo on enable and runs
+-- Toggleable SakuraVibes999's Reviz Admin: fetches the script from the repo on enable and runs
 -- it through loadstring, then calls the unload hook the script exposes
 -- (getgenv().RevizAdminUnload) on disable. The script is reload-safe: running
 -- it again unloads the previous run, so activating twice never stacks bars.
@@ -2265,7 +2265,7 @@ end
 
 ModMenu.Features.Reviz.close = function()
 	unloadExisting()
-	ModMenu.Notify("Reviz Admin", "Closed.")
+	ModMenu.Notify("SakuraVibes999's Reviz Admin", "Closed.")
 end
 
 ModMenu.Features.Reviz.open = function()
@@ -2287,15 +2287,15 @@ ModMenu.Features.Reviz.open = function()
 			-- A finished chunk with no GUI means it ran but could not parent its
 			-- ScreenGui anywhere. Never let that be silent.
 			if ModMenu.Features.Reviz.isOpen() then
-				ModMenu.Notify("Reviz Admin", "Loaded. Press ; for the command bar.")
+				ModMenu.Notify("SakuraVibes999's Reviz Admin", "Loaded. Press ; for the command bar.")
 			else
 				warn("[ModMenu] reviz.lua ran but no RevizAdmin GUI was found")
-				ModMenu.Notify("Reviz Admin", "Ran, but no command bar appeared (see console).")
+				ModMenu.Notify("SakuraVibes999's Reviz Admin", "Ran, but no command bar appeared (see console).")
 			end
 		else
 			revizLoaded = false
 			warn("[ModMenu] Reviz load failed: " .. tostring(err))
-			ModMenu.Notify("Reviz Admin", "Failed to load: " .. tostring(err))
+			ModMenu.Notify("SakuraVibes999's Reviz Admin", "Failed to load: " .. tostring(err))
 		end
 	end)
 end
@@ -2309,7 +2309,7 @@ ModMenu.Features.Reviz.toggle = function(state: boolean)
 	end
 end
 
--- A re-executed menu may leave a previous Reviz running; clean it up on load.
+-- A re-executed menu may leave a previous SakuraVibes999's Reviz running; clean it up on load.
 -- init.luau re-activates it afterwards if the saved toggle is on.
 unloadExisting()
 
@@ -2552,7 +2552,7 @@ do
 	local p = Panels.utility
 	C.section(p, "Scripts & Explorer")
 	C.toggle(p, "utility.dex", "Dex Explorer", false, function(v) ModMenu.Features.Dex.toggle(v) end)
-	C.toggle(p, "utility.reviz", "Reviz Admin", false, function(v) ModMenu.Features.Reviz.toggle(v) end)
+	C.toggle(p, "utility.reviz", "SakuraVibes999's Reviz Admin", false, function(v) ModMenu.Features.Reviz.toggle(v) end)
 	C.toggle(p, "utility.shattervast", "Grac3Haz3Lion's ShatterVast Admin", false, function(v) ModMenu.Features.Shattervast.toggle(v) end)
 	C.section(p, "Movement Tools")
 	C.toggle(p, "utility.clickTP", "Click Teleport", false, function(v) ModMenu.Features.Movement.clickTeleport(v) end)
