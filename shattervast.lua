@@ -1,7 +1,8 @@
--- ShatterVast Admin (revived)
--- Original by illremember#3799, re-scripted by Alex games #9120.
--- Revived for modern Roblox: deprecated API fixes, pcall'd file I/O and a
--- proper unload hook so re-running does not stack command bars or loops.
+-- Grac3Haz3Lion's ShatterVast Admin (revived + improved)
+-- Original ShatterVast by illremember#3799, re-scripted by Alex games #9120.
+-- Revived and improved by Grac3Haz3Lion for modern Roblox: deprecated API
+-- fixes, pcall'd file I/O and a proper unload hook so re-running does not
+-- stack command bars or loops.
 -- Press the prefix key (default ";") to focus the command bar.
 
 -- Important Loading
@@ -1657,7 +1658,7 @@ Commands.default = function(args)
 end
 
 Commands.credits = function(args)
-	Notification("info", "Shattervast was made by illremember#3799 , "..commandPrefix.."fullcredits for all credits.", 8)
+	Notification("info", "Grac3Haz3Lion's ShatterVast, originally by illremember#3799. "..commandPrefix.."fullcredits for all credits.", 8)
 end
 
 Commands.attach = function(args)
@@ -3185,7 +3186,7 @@ Commands.freefall = function(args)
 end
 
 Commands.version = function(args)
-	Notification("info", "Current Shattervast Version: V2.8", 7)
+	Notification("info", "Grac3Haz3Lion's ShatterVast Admin Version: V2.8", 7)
 end
 
 Commands.shiftlockon = function(args)
