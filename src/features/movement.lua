@@ -101,39 +101,46 @@ end
 ModMenu.Features.Movement.noclip = function(enabled: boolean)
 	local id = "movement.noclip"
 	ModMenu.State.clearConnections(id)
+	ModMenu.State.noclipOriginal = ModMenu.State.noclipOriginal or {}
 	if not enabled then
-		local c = char()
-		if c then
-			for _, part in c:GetDescendants() do
-				if part:IsA("BasePart") then
-					part.CanCollide = true
-				end
+		-- Restore the original CanCollide of every part we changed (not a blanket
+		-- `true`, which would wrongly collide HumanoidRootPart/accessories).
+		for part, original in ModMenu.State.noclipOriginal do
+			if part and part.Parent then
+				part.CanCollide = original
 			end
 		end
+		table.clear(ModMenu.State.noclipOriginal)
 		return
 	end
-	local conn = RunService.Stepped:Connect(function()
+	local function applyNoclip()
 		local c = char()
 		if not c then return end
 		for _, part in c:GetDescendants() do
 			if part:IsA("BasePart") then
+				if ModMenu.State.noclipOriginal[part] == nil then
+					ModMenu.State.noclipOriginal[part] = part.CanCollide
+				end
 				part.CanCollide = false
 			end
 		end
-	end)
+	end
+	applyNoclip()
+	local conn = RunService.Stepped:Connect(applyNoclip)
 	table.insert(ModMenu.State.getConnections(id), conn)
 end
 
 ModMenu.Features.Movement.float = function(enabled: boolean)
 	local id = "movement.float"
 	ModMenu.State.clearConnections(id)
-	local r = root()
-	if not r then return end
 	if not enabled then
-		local bp = r:FindFirstChild("ModMenuFloat")
+		local r = root()
+		local bp = r and r:FindFirstChild("ModMenuFloat")
 		if bp then bp:Destroy() end
 		return
 	end
+	local r = root()
+	if not r then return end
 	local bodyPosition = Instance.new("BodyPosition")
 	bodyPosition.Name = "ModMenuFloat"
 	bodyPosition.MaxForce = Vector3.new(0, 1e5, 0)
@@ -141,9 +148,11 @@ ModMenu.Features.Movement.float = function(enabled: boolean)
 	bodyPosition.Parent = r
 	local conn = RunService.RenderStepped:Connect(function()
 		local r2 = root()
-		if r2 and bodyPosition.Parent then
-			bodyPosition.Position = Vector3.new(r2.Position.X, bodyPosition.Position.Y, r2.Position.Z)
-		end
+		if not r2 then return end
+		-- Re-attach after respawn: the old root (and the parented BodyPosition)
+		-- was destroyed, so `bodyPosition.Parent` is nil on the new character.
+		if bodyPosition.Parent ~= r2 then bodyPosition.Parent = r2 end
+		bodyPosition.Position = Vector3.new(r2.Position.X, bodyPosition.Position.Y, r2.Position.Z)
 	end)
 	table.insert(ModMenu.State.getConnections(id), conn)
 end
@@ -223,5 +232,26 @@ ModMenu.Features.Movement.resetMovement = function()
 		h.JumpPower = ModMenu.State.originalJumpPower or 50
 		h.HipHeight = ModMenu.State.originalHipHeight or 0
 	end
+	-- Forget custom slider values so a respawn does not re-apply them.
+	ModMenu.State.touched["player.walkspeed"] = nil
+	ModMenu.State.touched["player.jumppower"] = nil
+	ModMenu.State.touched["character.hipHeight"] = nil
 	ModMenu.Features.Movement.setGravity(196.2)
 end
+
+-- Re-apply the movement-stat sliders the user actually changed after a respawn.
+-- The game resets WalkSpeed/JumpPower/HipHeight on the new Humanoid, so without
+-- this the sliders would show their value while the stats silently reverted.
+table.insert(ModMenu.State.getConnections("movement.respawn"), S.Players.LocalPlayer.CharacterAdded:Connect(function(character: Model)
+	local h = character:WaitForChild("Humanoid", 5)
+	if not h or not h:IsA("Humanoid") then return end
+	if ModMenu.State.touched["player.walkspeed"] then
+		h.WalkSpeed = ModMenu.State.numbers["player.walkspeed"]
+	end
+	if ModMenu.State.touched["player.jumppower"] then
+		h.JumpPower = ModMenu.State.numbers["player.jumppower"]
+	end
+	if ModMenu.State.touched["character.hipHeight"] then
+		h.HipHeight = ModMenu.State.numbers["character.hipHeight"]
+	end
+end))

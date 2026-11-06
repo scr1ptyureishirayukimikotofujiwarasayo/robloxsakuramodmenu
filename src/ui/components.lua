@@ -144,6 +144,7 @@ local function slider(parent: Instance, id: string, label: string, min: number, 
 
 	local function setValue(v: number)
 		render(v)
+		ModMenu.State.touched[id] = true
 		if apply then pcall(apply, value) end
 	end
 
@@ -170,6 +171,12 @@ local function slider(parent: Instance, id: string, label: string, min: number, 
 
 	-- Show the stored/default value without running the feature on load.
 	render(value)
+	-- Register the callback so init.luau can re-apply sliders the user has
+	-- previously touched (respawn / restore), without firing on load otherwise.
+	if apply then
+		ModMenu.UI.numberApply[id] = ModMenu.UI.numberApply[id] or {}
+		table.insert(ModMenu.UI.numberApply[id], apply)
+	end
 	return row
 end
 
@@ -237,28 +244,41 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 	listLayout.Parent = list
 	list.Parent = row
 
-	for i, item in items do
-		local b = Instance.new("TextButton")
-		b.Size = UDim2.new(1, 0, 0, 22)
-		b.LayoutOrder = i
-		b.BackgroundColor3 = Theme.surface
-		b.TextColor3 = Theme.text
-		b.Font = Theme.font
-		b.TextSize = 13
-		b.Text = item
-		b.BorderSizePixel = 0
-		b.Parent = list
-		Theme.textStroke(b, 0.6)
-		b.MouseButton1Click:Connect(function()
-			selected = item
-			btn.Text = selected
-			open = false
-			list.Visible = false
-			ModMenu.State.strings[id] = selected
-			if apply then pcall(apply, selected) end
-			pcall(ModMenu.Config.save)
-		end)
+	local function buildItems(newItems: { string })
+		items = newItems
+		for _, child in list:GetChildren() do
+			if child:IsA("TextButton") then
+				child:Destroy()
+			end
+		end
+		list.Size = UDim2.new(0.6, 0, 0, math.min(#items * 22, 160))
+		list.CanvasSize = UDim2.new(0, 0, 0, #items * 22)
+		for i, item in items do
+			local b = Instance.new("TextButton")
+			b.Size = UDim2.new(1, 0, 0, 22)
+			b.LayoutOrder = i
+			b.BackgroundColor3 = Theme.surface
+			b.TextColor3 = Theme.text
+			b.Font = Theme.font
+			b.TextSize = 13
+			b.Text = item
+			b.BorderSizePixel = 0
+			b.Parent = list
+			Theme.textStroke(b, 0.6)
+			b.MouseButton1Click:Connect(function()
+				selected = item
+				btn.Text = selected
+				open = false
+				list.Visible = false
+				ModMenu.State.strings[id] = selected
+				if apply then pcall(apply, selected) end
+				pcall(ModMenu.Config.save)
+			end)
+		end
 	end
+	buildItems(items)
+	-- Let callers repopulate the options (e.g. as players join/leave).
+	ModMenu.UI.dropdowns[id] = { refresh = buildItems }
 
 	btn.MouseButton1Click:Connect(function()
 		open = not open
@@ -272,8 +292,12 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 end
 
 ModMenu.UI = ModMenu.UI or {}
-ModMenu.UI.toggleSync = ModMenu.UI.toggleSync or {}
-ModMenu.UI.toggleApply = ModMenu.UI.toggleApply or {}
+-- Reset per-run registries. Do NOT `or`-keep these: on a re-execute the old
+-- closures would otherwise linger and fire against destroyed widgets/features.
+ModMenu.UI.toggleSync = {}
+ModMenu.UI.toggleApply = {}
+ModMenu.UI.numberApply = {}
+ModMenu.UI.dropdowns = {}
 ModMenu.UI.Components = {
 	button = button,
 	toggle = toggle,

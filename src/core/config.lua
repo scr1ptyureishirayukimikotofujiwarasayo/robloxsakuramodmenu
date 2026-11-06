@@ -62,6 +62,13 @@ ModMenu.Config = {
 				end
 			end
 		end
+		if type(decoded.touched) == "table" then
+			for k, v in decoded.touched do
+				if type(k) == "string" and v == true then
+					ModMenu.State.touched[k] = true
+				end
+			end
+		end
 		if type(decoded.savedPosition) == "table" then
 			ModMenu.State.savedPosition = Vector3.new(decoded.savedPosition.x or 0, decoded.savedPosition.y or 0, decoded.savedPosition.z or 0)
 			ModMenu.State.savedPositionName = decoded.savedPositionName
@@ -99,6 +106,7 @@ ModMenu.Config = {
 			rememberToggles = ModMenu.State.settings.rememberToggles,
 			toggles = ModMenu.State.toggles,
 			numbers = ModMenu.State.numbers,
+			touched = ModMenu.State.touched,
 			waypoints = waypoints,
 			savedPosition = ModMenu.State.savedPosition and {
 				x = ModMenu.State.savedPosition.X,
@@ -121,6 +129,7 @@ ModMenu.Config = {
 		table.clear(ModMenu.State.toggles)
 		table.clear(ModMenu.State.numbers)
 		table.clear(ModMenu.State.strings)
+		table.clear(ModMenu.State.touched)
 		table.clear(ModMenu.State.waypoints)
 		ModMenu.State.savedPosition = nil
 		ModMenu.State.savedPositionName = nil

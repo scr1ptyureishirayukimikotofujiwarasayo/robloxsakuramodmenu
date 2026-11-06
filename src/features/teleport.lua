@@ -17,13 +17,17 @@ local function tpBypass(seconds: number?)
 end
 
 ModMenu.Features.Teleport.toSpawn = function()
-	local r = (ModMenu.Services.Players.LocalPlayer.Character or {}).HumanoidRootPart
-	if S.Workspace:FindFirstChild("SpawnLocation") then
-		local sp = S.Workspace:FindFirstChild("SpawnLocation")
-		if sp and r then
-			tpBypass(1)
-			r.CFrame = sp.CFrame + Vector3.new(0, 3, 0)
-		end
+	local r = ModMenu.Services.Players.LocalPlayer.Character
+		and ModMenu.Services.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	if not r then return end
+	-- Spawns are often nested in a folder or named SP_Waypoint etc., so search
+	-- the whole workspace by class rather than only a direct child by name.
+	local sp = S.Workspace:FindFirstChildWhichIsA("SpawnLocation", true)
+	if sp then
+		tpBypass(1)
+		r.CFrame = sp.CFrame + Vector3.new(0, 3, 0)
+	else
+		ModMenu.Notify("Teleport", "No SpawnLocation found in this place")
 	end
 end
 

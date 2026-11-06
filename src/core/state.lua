@@ -15,6 +15,9 @@ ModMenu.State = {
 	toggles = {} :: { [string]: boolean },
 	numbers = {} :: { [string]: number },
 	strings = {} :: { [string]: string },
+	-- Slider ids the user has actually dragged. Only these are re-applied after
+	-- a respawn (or on load), so untouched defaults never fire on their own.
+	touched = {} :: { [string]: boolean },
 	connections = {} :: { [string]: { RBXScriptConnection } },
 	waypoints = {} :: { { name: string, position: Vector3 } },
 	savedPosition = nil :: Vector3?,

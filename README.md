@@ -28,8 +28,10 @@ The menu is organised into tabs. What each one currently does:
 - **Visual** - Player ESP (Highlight), `Fullbright`, `Remove Fog`, Field of View, Clock Time.
 - **World** - `Anti-Lag / Low Graphics`, `Rejoin`.
 - **Teleport** - `Teleport to Spawn`, `Copy Position`, `Rejoin Server`.
-- **Character** - Hip Height, `Platform Stand`, `Invisible`, `No Limbs` / `No Arms` / `No Legs`,
-  `Block Hats`, View Player, Unview, Reset Movement.
+- **Character** - Hip Height, `Platform Stand`, `Invisible`, `No Limbs` / `No Arms` / `No Legs`
+  (hidden with transparency rather than unparenting, so the rig stays intact),
+  `Block Hats`, View Player, Unview, Reset Movement. Character toggles re-apply
+  automatically after you respawn.
 - **Protection** - `Anti-Fling` (watchdog that zeroes runaway velocity, unseats fling
   seats and snaps you back to your last safe position) and `Anti-Teleport` (reverts
   single-frame moves larger than the slider). The menu's own teleports are exempted
@@ -52,13 +54,16 @@ The menu is organised into tabs. What each one currently does:
   notification if the executor lacks them.
 - **Persistence:** by default `Remember Toggles on Load` is **off**, so every run (including a
   server hop) starts with all feature toggles off - only non-feature settings (open key,
-  accent, background, waypoints, saved position) persist. Turn `Remember Toggles on Load` on to
+  accent, background, waypoints, saved position) persist. Slider values you actually drag
+  (WalkSpeed, JumpPower, Gravity, FOV, Clock Time, Workspace Visibility, ...) are saved and
+  re-applied on load and after respawn, so the numbers you set stick; sliders you never touch
+  keep their defaults and are not forced on the game. Turn `Remember Toggles on Load` on to
   restore active features across runs. `Auto-Save` (default on) writes `ModMenuConfig.json` on
   every change; turn it off to persist only when you press `Save Now`. `Reset Toggles Now`
   switches every feature off immediately, and `Wipe Saved Config` deletes the file and resets
   in-memory state.
 - **SakuraVibes999's Reviz Admin:** Utilities > `SakuraVibes999's Reviz Admin` fetches `reviz.lua` from the repo and runs it
-  through `loadstring`, dropping in the revived SakuraVibes999's Reviz command bar (prefix `;`). Turning the
+  through `loadstring`, dropping in the revived Reviz command bar (prefix `;`). Turning the
   toggle off calls the script's own `RevizAdminUnload` hook. Press `;` to focus the bar, or
   `;cmds` for the command list. Requires network access and `reviz.lua` at the repo root.
 - **Grac3Haz3Lion's ShatterVast Admin:** Utilities > `Grac3Haz3Lion's ShatterVast Admin` is a separate, optional admin script
@@ -71,6 +76,23 @@ The menu is organised into tabs. What each one currently does:
   executor's workspace folder via `getcustomasset`, auto-downloading `picture.png` if
   missing. If `getcustomasset` is unavailable it falls back to the uploaded decal id in
   `BACKGROUND_ASSET_ID` (`src/ui/menu.luau`), then to a solid themed background.
+
+## Fixes in 0.4.4
+
+- `Auto Click Detectors` now passes a numeric distance to `fireclickdetector`, and
+  `Auto Touch Parts` passes args in the correct `(part, toucher, state)` order, so touches
+  actually land on the target part.
+- `Lock Workspace` and `Workspace Visibility` no longer touch character/NPC rigs, so locking
+  no longer freezes you.
+- `Noclip` restores each part's original `CanCollide` instead of forcing it on, and
+  `Float Platform` re-attaches after respawn.
+- Movement-stat sliders and all character toggles re-apply after respawn.
+- `Fullbright` / `Remove Fog` snapshot and restore Lighting (Brightness, ClockTime,
+  GlobalShadows, FogEnd, FogStart) instead of clobbering it.
+- `No Limbs` / `No Arms` / `No Legs` hide limbs safely without breaking the rig.
+- `Teleport to Spawn` finds spawns anywhere in the workspace and reports when none exist.
+- Player dropdowns refresh as players join/leave; re-executing the menu no longer stacks
+  old feature loops/connections; `Hide Other GUIs` only re-enables GUIs it disabled.
 
 ## Credits
 

@@ -3,30 +3,58 @@
 local S = ModMenu.Services
 local Lighting = S.Lighting
 local RunService = S.RunService
-local Camera = S.Workspace.CurrentCamera
 
 ModMenu.Features = ModMenu.Features or {}
 ModMenu.Features.Visual = {}
 
-ModMenu.Features.Visual.fullbright = function(enabled: boolean)
-	if enabled then
-		Lighting.Brightness = 2
-		Lighting.ClockTime = 14
-		Lighting.FogEnd = 1e5
-		Lighting.GlobalShadows = false
-	else
-		Lighting.Brightness = 1
-		Lighting.GlobalShadows = true
+-- Snapshot the Lighting properties we may change once, so disabling restores
+-- the game's own values instead of hard-coded guesses.
+local function lightingOriginal()
+	if not ModMenu.State.lightingOriginal then
+		ModMenu.State.lightingOriginal = {
+			Brightness = Lighting.Brightness,
+			ClockTime = Lighting.ClockTime,
+			GlobalShadows = Lighting.GlobalShadows,
+			FogEnd = Lighting.FogEnd,
+			FogStart = Lighting.FogStart,
+		}
 	end
+	return ModMenu.State.lightingOriginal
 end
 
-ModMenu.Features.Visual.removeFog = function(enabled: boolean)
-	if enabled then
+-- Fullbright and Remove Fog both touch fog, so recompute the whole Lighting
+-- state from the current toggles rather than each one blindly overwriting.
+local function refreshLighting()
+	local o = lightingOriginal()
+	local fullbright = ModMenu.State.toggles["visual.fullbright"] == true
+	local removeFog = ModMenu.State.toggles["visual.removeFog"] == true
+
+	Lighting.Brightness = if fullbright then 2 else o.Brightness
+	Lighting.GlobalShadows = if fullbright then false else o.GlobalShadows
+
+	if fullbright then
+		Lighting.ClockTime = 14
+	elseif ModMenu.State.touched["visual.clock"] then
+		Lighting.ClockTime = ModMenu.State.numbers["visual.clock"]
+	else
+		Lighting.ClockTime = o.ClockTime
+	end
+
+	if fullbright or removeFog then
 		Lighting.FogEnd = 1e5
 		Lighting.FogStart = 0
 	else
-		Lighting.FogEnd = 1000
+		Lighting.FogEnd = o.FogEnd
+		Lighting.FogStart = o.FogStart
 	end
+end
+
+ModMenu.Features.Visual.fullbright = function(_enabled: boolean)
+	refreshLighting()
+end
+
+ModMenu.Features.Visual.removeFog = function(_enabled: boolean)
+	refreshLighting()
 end
 
 ModMenu.Features.Visual.setFOV = function(value: number)
@@ -35,7 +63,8 @@ ModMenu.Features.Visual.setFOV = function(value: number)
 end
 
 ModMenu.Features.Visual.setClockTime = function(value: number)
-	Lighting.ClockTime = value
+	-- The slider already stored `value`; just re-derive the Lighting state.
+	refreshLighting()
 end
 
 ModMenu.Features.Visual.esp = function(enabled: boolean)
@@ -51,26 +80,22 @@ ModMenu.Features.Visual.esp = function(enabled: boolean)
 		return
 	end
 	local function applyTo(char: Model)
-		if not char:FindFirstChild("ModMenuESP") then
-			local hl = Instance.new("Highlight")
-			hl.Name = "ModMenuESP"
-			hl.FillTransparency = 0.5
-			hl.OutlineTransparency = 0
-			hl.FillColor = ModMenu.Theme.accent()
-			hl.Parent = char
-		end
+		local existing = char:FindFirstChild("ModMenuESP")
+		if existing then return end
+		local hl = Instance.new("Highlight")
+		hl.Name = "ModMenuESP"
+		hl.FillTransparency = 0.5
+		hl.OutlineTransparency = 0
+		hl.FillColor = ModMenu.Theme.accent()
+		hl.Parent = char
 	end
 	for _, p in S.Players:GetPlayers() do
 		if p ~= S.Players.LocalPlayer and p.Character then applyTo(p.Character) end
 	end
-	local conn = S.Players.PlayerAdded:Connect(function(p)
-		local cconn = p.CharacterAdded:Connect(function(c)
-			if ModMenu.State.toggles["visual.esp"] then applyTo(c) end
-		end)
-		table.insert(ModMenu.State.getConnections(id), cconn)
-	end)
-	table.insert(ModMenu.State.getConnections(id), conn)
-	local conn2 = RunService.Heartbeat:Connect(function()
+	-- The Heartbeat pass already adds/removes highlights for every player,
+	-- including respawns and joins, so no per-player CharacterAdded tracking is
+	-- needed (that would leak a connection for every player who left).
+	local conn = RunService.Heartbeat:Connect(function()
 		for _, p in S.Players:GetPlayers() do
 			if p ~= S.Players.LocalPlayer and p.Character then
 				if ModMenu.State.toggles["visual.esp"] then
@@ -82,5 +107,5 @@ ModMenu.Features.Visual.esp = function(enabled: boolean)
 			end
 		end
 	end)
-	table.insert(ModMenu.State.getConnections(id), conn2)
+	table.insert(ModMenu.State.getConnections(id), conn)
 end

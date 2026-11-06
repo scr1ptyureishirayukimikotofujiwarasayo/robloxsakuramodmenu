@@ -207,6 +207,22 @@ do
 	end)
 end
 
+-- Keep the player lists current as players join/leave.
+do
+	local function refreshPlayerDropdowns()
+		local names = {}
+		for _, plr in ModMenu.Services.Players:GetPlayers() do
+			table.insert(names, plr.Name)
+		end
+		local views = ModMenu.UI.dropdowns["character.viewTarget"]
+		if views then views.refresh(names) end
+		local infos = ModMenu.UI.dropdowns["utility.playerInfoTarget"]
+		if infos then infos.refresh(names) end
+	end
+	table.insert(ModMenu.State.getConnections("menu"), ModMenu.Services.Players.PlayerAdded:Connect(refreshPlayerDropdowns))
+	table.insert(ModMenu.State.getConnections("menu"), ModMenu.Services.Players.PlayerRemoving:Connect(refreshPlayerDropdowns))
+end
+
 -- Single explicit restore point. Widgets no longer run their feature while
 -- being built, so re-apply the toggles loaded from config once, after the whole
 -- UI exists -- and only when the user opted in. Preferences ("settings.") are
@@ -217,6 +233,16 @@ if ModMenu.State.settings.rememberToggles then
 			for _, apply in callbacks do
 				pcall(apply, true)
 			end
+		end
+	end
+end
+
+-- Re-apply sliders the user actually set (persisted via config). Untouched
+-- defaults are skipped so load does not fire every feature on its own.
+for id, callbacks in ModMenu.UI.numberApply do
+	if ModMenu.State.touched[id] and ModMenu.State.numbers[id] ~= nil then
+		for _, apply in callbacks do
+			pcall(apply, ModMenu.State.numbers[id])
 		end
 	end
 end

@@ -46,9 +46,9 @@ ModMenu.Features.Interaction.clickDetectorLoop = function(enabled: boolean)
 		local fired = 0
 		for _, d in Workspace:GetDescendants() do
 			if d:IsA("ClickDetector") then
-				local part = d.Parent
-				local pos = if part and part:IsA("BasePart") then part.Position else nil
-				pcall(fire, d, pos)
+				-- fireclickdetector(detector, distance: number?, clickOption?)
+				-- `distance` must be a number; passing a Vector3 threw/ignored it.
+				pcall(fire, d, 0)
 				fired += 1
 			end
 		end
@@ -86,8 +86,10 @@ ModMenu.Features.Interaction.touchInterestLoop = function(enabled: boolean)
 				if char and (part == char or part:IsDescendantOf(char)) then continue end
 				local toucher = if r and r.Parent then r else part
 				pcall(function()
-					fire(toucher, part, 0) -- touch begin
-					fire(toucher, part, 1) -- touch end
+					-- Signature is (partBeingTouched, toucher, state). Passing the
+					-- root first fired Touched on ourselves, never on the target.
+					fire(part, toucher, 0) -- touch begin
+					fire(part, toucher, 1) -- touch end
 				end)
 				fired += 1
 			end

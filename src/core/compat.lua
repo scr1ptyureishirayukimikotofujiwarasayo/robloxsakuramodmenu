@@ -50,6 +50,18 @@ replicatesignal = missing("function", replicatesignal)
 getconnections = missing("function", getconnections or get_signal_cons)
 
 ModMenu = (typeof(ModMenu) == "table" and ModMenu) or (_G and _G.ModMenu) or {}
+
+-- Re-execution: the previous run's feature loops/connections are still live.
+-- Tear them down before core/state.luau replaces State.connections, otherwise
+-- they become untracked and keep running forever (stacked ESP, fly, etc.).
+if typeof(ModMenu.State) == "table" and typeof(ModMenu.State.connections) == "table" then
+	for _, bucket in ModMenu.State.connections do
+		for _, conn in bucket do
+			pcall(function() conn:Disconnect() end)
+		end
+	end
+end
+
 _G = _G or {}
 _G.ModMenu = ModMenu
 ModMenu.Compat = { missing = missing }

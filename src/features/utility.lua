@@ -8,6 +8,14 @@ ModMenu.State.hiddenParts = ModMenu.State.hiddenParts or {}
 ModMenu.State.workspaceVisibilityOriginal = ModMenu.State.workspaceVisibilityOriginal or {}
 ModMenu.State.lockedPartsOriginal = ModMenu.State.lockedPartsOriginal or {}
 
+-- True for any part in a character/NPC rig (it has a Humanoid model ancestor).
+-- World tools must skip these: anchoring a character freezes it, and hiding it
+-- makes players invisible.
+local function isCharacterPart(part: BasePart): boolean
+	local model = part:FindFirstAncestorOfClass("Model")
+	return model ~= nil and model:FindFirstChildOfClass("Humanoid") ~= nil
+end
+
 -- Click TP / Delete / tool grabber connections handled via movement clickTeleport id and utility ids.
 
 ModMenu.Features.Utility.clickDelete = function(enabled: boolean)
@@ -66,7 +74,7 @@ ModMenu.Features.Utility.workspaceVisibility = function(value: number)
 	value = math.clamp(value, 0, 1)
 	if next(ModMenu.State.workspaceVisibilityOriginal) == nil then
 		for _, part in S.Workspace:GetDescendants() do
-			if part:IsA("BasePart") then
+			if part:IsA("BasePart") and not isCharacterPart(part) then
 				ModMenu.State.workspaceVisibilityOriginal[part] = part.Transparency
 			end
 		end
@@ -91,7 +99,7 @@ ModMenu.Features.Utility.lockWorkspace = function(enabled: boolean)
 	if enabled then
 		if next(ModMenu.State.lockedPartsOriginal) == nil then
 			for _, part in S.Workspace:GetDescendants() do
-				if part:IsA("BasePart") then
+				if part:IsA("BasePart") and not isCharacterPart(part) then
 					ModMenu.State.lockedPartsOriginal[part] = part.Anchored
 					part.Anchored = true
 				end
@@ -143,11 +151,10 @@ ModMenu.Features.Utility.reach = function(enabled: boolean)
 end
 
 ModMenu.Features.Utility.feCheck = function()
-	local filtering = false
-	pcall(function()
-		filtering = S.Workspace.FilteringEnabled
-	end)
-	ModMenu.Notify("FilteringEnabled", filtering and "Filtering enabled (FE)" or "Filtering disabled/unknown")
+	-- Client replication is always filtered in modern Roblox; there is no
+	-- exploitable "FE off" state, so report that plainly instead of reading a
+	-- property that no longer reflects anything useful.
+	ModMenu.Notify("Filtering", "FilteringEnabled is always on (client replication is filtered)")
 end
 
 ModMenu.Features.Utility.playerInfo = function(targetName: string?)
