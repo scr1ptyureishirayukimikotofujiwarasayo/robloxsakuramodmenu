@@ -6,7 +6,8 @@ Client-side Roblox mod menu generated from the supplied source files.
 
 - `src/` - modular development source.
 - `dist/ModMenu.lua` - runnable single-file bundle for an executor.
-- `build.py` - rebuilds the bundle from `src/*.luau`.
+- `build.py` - rebuilds the bundle from `src/*.luau` (`python build.py [version]`).
+- `loader.lua` - fetches and runs each module from this repository.
 - `docs/` - usage notes.
 
 ## Usage
@@ -16,33 +17,46 @@ Client-side Roblox mod menu generated from the supplied source files.
 3. Execute `dist/ModMenu.lua`.
 4. Press the configured open key (default `RightShift`) to show/hide the menu.
 5. Use the `Settings` tab to change the open key and save settings.
-6. Use the `Console` tab for SakuraVibes999's Reviz Admin commands.
 
 ## Features
 
-- **Reviz Admin Remake (Toggleable + Console tab)** - SakuraVibes999's Reviz Admin
-  (133 commands) can be toggled on/off as the original standalone command bar + commands window under `Utility > Scripts & Explorer`, or via the `Open / Close Command Bar` button in `Console`, and also driven directly from the `Console` tab with a command box, live log and quick actions. Both `;cmd` (as documented by the original) and `cmd` work.
-- **Protection tab** - `Anti-Fling` (watchdog that zeroes runaway velocity, unseats fling
+The menu is organised into tabs. What each one currently does:
+
+- **Home** - About text, `Copy Position`, `Fullbright` shortcut.
+- **Player** - `WalkSpeed`, `JumpPower` and `Gravity` sliders, plus waypoint save / teleport to last.
+- **Movement** - `Fly` (with a fly-speed slider), `Noclip`, `Float Platform`.
+- **Visual** - Player ESP (Highlight), `Fullbright`, `Remove Fog`, Field of View, Clock Time.
+- **World** - `Anti-Lag / Low Graphics`, `Rejoin`.
+- **Teleport** - `Teleport to Spawn`, `Copy Position`, `Rejoin Server`.
+- **Character** - Hip Height, `Platform Stand`, `Invisible`, `No Limbs` / `No Arms` / `No Legs`,
+  `Block Hats`, View Player, Unview, Reset Movement.
+- **Protection** - `Anti-Fling` (watchdog that zeroes runaway velocity, unseats fling
   seats and snaps you back to your last safe position) and `Anti-Teleport` (reverts
-  single-frame moves larger than the slider). The menu's own teleports are exempted through
-  an internal bypass window.
-- **Utility > Interactions** - `Auto Click Detectors` and `Auto Touch Parts` fire every
-  ClickDetector / TouchTransmitter in the workspace on a configurable interval (toggleable).
-  Requires the `fireclickdetector` / `firetouchinterest` executor globals; the toggles turn
-  themselves back off with a notification if the executor lacks them.
+  single-frame moves larger than the slider). The menu's own teleports are exempted
+  through an internal bypass window.
+- **Utility** - Dex Explorer, Click Teleport, Save / Load Position, Workspace Visibility,
+  Restore Workspace, Click Delete (reversible), Lock Workspace, Tool Grabber, Tool Reach,
+  plus `Interactions` (`Auto Click Detectors` and `Auto Touch Parts`) and diagnostics
+  (`FE Check`, `Player Info`).
+- **Settings** - Open Key, Hide Other GUIs, Background Image on/off and brightness,
+  Save Settings, Reset Toggles.
 
 ## Notes
 
 - Effects are client-local unless the game deliberately exposes server behavior.
 - Server-authoritative values cannot be permanently changed from the client.
-- The Console command set is faithful to the original Reviz Admin, including
-  legacy/destructive commands; nothing runs until you enter one.
-- The `GetObjects` GUI loaders degrade with a warning when their legacy asset is
-  gone; `explorer` also tries a local `Dex Explorer (Embedded).lua`.
+- `Auto Click Detectors` / `Auto Touch Parts` fire every ClickDetector / TouchTransmitter in
+  the workspace on a configurable interval. They require the `fireclickdetector` /
+  `firetouchinterest` executor globals; the toggles turn themselves back off with a
+  notification if the executor lacks them.
+- `Reset Toggles` resets the stored toggle state only; reload the script for the change to
+  take effect on running features.
+- **Background image:** the menu loads `ModMenuBackground.png` (or `picture.png`) from the
+  executor's workspace folder via `getcustomasset`, auto-downloading `picture.png` if
+  missing. If `getcustomasset` is unavailable it falls back to the uploaded decal id in
+  `BACKGROUND_ASSET_ID` (`src/ui/menu.luau`), then to a solid themed background.
 
 ## Credits
 
-- Command engine and branding: SakuraVibes999's Reviz Admin.
-- Service/capability/config approach adapted from Infinite Yield.
-- Window/container approach adapted from TopKek.
-- Animation entries adapted from ROBLOX Animation Gui V1.
+- Service / capability / config approach adapted from Infinite Yield.
+- Window / container approach adapted from TopKek.

@@ -6,7 +6,7 @@ Client-side Roblox mod menu generated from the supplied source files.
 
 - `src/` - modular development source.
 - `dist/ModMenu.lua` - runnable single-file bundle for an executor.
-- `build.py` - concatenates `src/*.luau` into the bundle (`python build.py 0.4.0`).
+- `build.py` - concatenates `src/*.luau` into the bundle (`python build.py [version]`).
 - `loader.lua` - fetches and runs each module from this repository.
 - `docs/` - usage notes.
 
@@ -17,23 +17,24 @@ Client-side Roblox mod menu generated from the supplied source files.
 3. Execute `dist/ModMenu.lua` (or `loader.lua`).
 4. Press the configured open key (default `RightShift`) to show/hide the menu.
 5. Use the `Settings` tab to change the open key and save settings.
-6. Use the `Console` tab for SakuraVibes999's Reviz Admin commands (see below).
 
-## Console & Reviz Admin Remake (SakuraVibes999's Reviz Admin)
+## Tabs
 
-The verified Reviz Admin remake is embedded as `src/features/reviz.luau` and can be used both as a toggleable standalone GUI (`RevizAdmin` command bar + `RevizAdminCMDS` window) and from the `Console` tab:
-
-- Toggle `Reviz Admin Remake` under `Utility > Scripts & Explorer`, or press `Open / Close Command Bar` in `Console`, to open/close the original draggable Reviz command bar and commands window.
-- Type a command in the Console box (or Reviz command bar) and press Enter, or use the quick-command buttons.
-- Both the live prefix (`:`) and the historical `;` prefix work: `;god` and `god` run the same command. Unknown commands now report `unknown` instead of silently doing nothing.
-- Turning the toggle off also stops fly/noclip/spin/loops and removes the admin-created body movers, not just the window.
-- Press the prefix key (default `:`) to focus the Reviz command bar when open, or to open the Console tab and focus its box.
-- `resetprefix` restores the prefix no matter what it is currently set to, and `unbringobj` / `unbringmod` stop the bring loops.
-- The standalone bar shows the last command result (or error) under the input, since the full log lives in the Console tab.
-- `List Commands` opens the Reviz commands window (if enabled) and prints the full original command list into the panel.
-- `Chat Commands` (on by default) keeps the admin behaviour where a chat
-  message beginning with the prefix (or the historical `;`) runs the command.
-- Everything the commands report also appears in the panel log.
+- **Home** - About text, `Copy Position`, `Fullbright` shortcut.
+- **Player** - `WalkSpeed`, `JumpPower` and `Gravity` sliders, plus waypoint save and
+  "teleport to last".
+- **Movement** - `Fly` (with a fly-speed slider), `Noclip`, `Float Platform`.
+- **Visual** - Player ESP (Highlight), `Fullbright`, `Remove Fog`, Field of View, Clock Time.
+- **World** - `Anti-Lag / Low Graphics`, `Rejoin`.
+- **Teleport** - `Teleport to Spawn`, `Copy Position`, `Rejoin Server`.
+- **Character** - Hip Height, `Platform Stand`, `Invisible`, `No Limbs` / `No Arms` / `No Legs`,
+  `Block Hats`, View Player, Unview, Reset Movement.
+- **Protection** - `Anti-Fling` and `Anti-Teleport` (see Notes).
+- **Utility** - Dex Explorer, Click Teleport, Save / Load Position, Workspace Visibility,
+  Restore Workspace, Click Delete (reversible), Lock Workspace, Tool Grabber, Tool Reach,
+  `Interactions` and diagnostics (`FE Check`, `Player Info`).
+- **Settings** - Open Key, Hide Other GUIs, Background Image on/off and brightness,
+  Save Settings, Reset Toggles.
 
 ## Notes
 
@@ -50,7 +51,7 @@ The verified Reviz Admin remake is embedded as `src/features/reviz.luau` and can
   the photo must sit at ZIndex 0 with the root frame's background transparent;
   an opaque root paints over the photo and the menu looks black. Widgets get
   depth-based ZIndex values from `ModMenu.Menu.applyZOrder()` so children draw
-  above their parents — call it after adding new widgets. Dimming uses
+  above their parents - call it after adding new widgets. Dimming uses
   `ImageColor3`, not a black overlay frame, which would darken the text too.
 - **Reloads:** startup destroys any previous `ModMenu` ScreenGui and
   disconnects the previous run's input listeners, so re-executing the bundle
@@ -63,24 +64,17 @@ The verified Reviz Admin remake is embedded as `src/features/reviz.luau` and can
   bypass window is open, which Click TP, waypoints and saved positions set before moving you.
   Anti-teleport can rubber-band against legitimate server teleports - turn it off in games
   that teleport you by design.
-- **Utility > Interactions:** the auto loops fire every ClickDetector (`fireclickdetector`,
-  passing the part position) and every other part with a TouchTransmitter
-  (`firetouchinterest` begin+end pair from your root part) in the workspace once per interval
-  (slider, default 1s). Your own character is skipped. If the executor lacks either global,
-  the toggle switches itself back off with a notification.
+- **Utility > Interactions:** the auto loops fire every ClickDetector (`fireclickdetector`)
+  and every other part with a TouchTransmitter (`firetouchinterest` begin+end pair from your
+  root part) in the workspace once per interval (slider, default 1s). Your own character is
+  skipped. If the executor lacks either global, the toggle switches itself back off with a
+  notification.
+- **Reset Toggles** resets the stored toggle state only; reload the script for the change to
+  take effect on running features.
 - Effects are client-local unless the game deliberately exposes server behavior.
 - Server-authoritative values cannot be permanently changed from the client.
-- The `Console` tab embeds SakuraVibes999's Reviz Admin command set faithfully,
-  including legacy/destructive commands such as `shutdown`, `bang`, `spam` and
-  `pmspam`. Those are opt-in: nothing runs until a command is entered.
-- The four legacy `GetObjects` GUI loaders (`hypertotal`, `animgui`,
-  `opfinality`, `explorer`) degrade with a warning when their asset is gone.
-  `explorer` also tries a local `Dex Explorer (Embedded).lua` from the
-  executor's workspace folder.
 
 ## Credits
 
-- Command engine and branding: SakuraVibes999's Reviz Admin.
-- Service/capability/config approach adapted from Infinite Yield.
-- Window/container approach adapted from TopKek.
-- Animation entries adapted from ROBLOX Animation Gui V1.
+- Service / capability / config approach adapted from Infinite Yield.
+- Window / container approach adapted from TopKek.

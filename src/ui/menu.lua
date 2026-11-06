@@ -346,7 +346,6 @@ local categories = {
 	{ id = "character", name = "Character" },
 	{ id = "protection", name = "Protection" },
 	{ id = "utility", name = "Utility" },
-	{ id = "console", name = "Console" },
 	{ id = "settings", name = "Settings" },
 }
 
@@ -460,30 +459,6 @@ trackConnection(S.UserInputService.InputBegan:Connect(function(input, gameProces
 	if input.KeyCode == ModMenu.State.settings.openKey then
 		setOpen(not ModMenu.Menu.Open)
 		return
-	end
-	-- Reviz prefix key: if the standalone Reviz Admin command bar is open, its
-	-- own listener focuses CMDBAR; otherwise open the Console tab and focus its box.
-	local reviz = ModMenu.Features and ModMenu.Features.Reviz
-	if reviz and reviz.getPrefix then
-		if reviz.isOpen and reviz.isOpen() then
-			return
-		end
-		local prefix = reviz.getPrefix()
-		local key = nil
-		if prefix == ";" or prefix == ":" then
-			key = Enum.KeyCode.Semicolon
-		elseif type(prefix) == "string" and #prefix == 1 then
-			local ok, kc = pcall(function() return Enum.KeyCode[string.upper(prefix)] end)
-			if ok then key = kc end
-		end
-		if key and input.KeyCode == key then
-			if not ModMenu.Menu.Open then setOpen(true) end
-			switchTab("console")
-			local box = ModMenu.Menu.ConsoleInput
-			if box then
-				task.defer(function() pcall(function() box:CaptureFocus() end) end)
-			end
-		end
 	end
 end))
 
