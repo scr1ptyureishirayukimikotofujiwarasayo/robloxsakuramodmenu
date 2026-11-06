@@ -28,6 +28,12 @@ ModMenu.Config = {
 		if not raw then return end
 		local ok, decoded = pcall(HttpService.JSONDecode, HttpService, raw)
 		if not ok or type(decoded) ~= "table" then return end
+		if type(decoded.autoSave) == "boolean" then
+			ModMenu.State.settings.autoSave = decoded.autoSave
+		end
+		if type(decoded.rememberToggles) == "boolean" then
+			ModMenu.State.settings.rememberToggles = decoded.rememberToggles
+		end
 		if type(decoded.openKey) == "string" then
 			local k = Enum.KeyCode[decoded.openKey]
 			if k then
@@ -40,7 +46,9 @@ ModMenu.Config = {
 				ModMenu.State.settings.accent = Color3.new(a.r, a.g, a.b)
 			end
 		end
-		if type(decoded.toggles) == "table" then
+		-- Feature toggles are only restored when the user opted in. Otherwise the
+		-- widgets fall back to their defaults (off), so a server hop is clean.
+		if ModMenu.State.settings.rememberToggles and type(decoded.toggles) == "table" then
 			for k, v in decoded.toggles do
 				if type(v) == "boolean" then
 					ModMenu.State.toggles[k] = v
@@ -71,7 +79,10 @@ ModMenu.Config = {
 			end
 		end
 	end,
-	save = function()
+	save = function(force: boolean?)
+		if not force and not ModMenu.State.settings.autoSave then
+			return
+		end
 		local accent = ModMenu.State.settings.accent
 		local openKey = ModMenu.State.settings.openKey
 		local waypoints = {}
@@ -84,6 +95,8 @@ ModMenu.Config = {
 		local data = {
 			openKey = typeof(openKey) == "EnumItem" and openKey.Name or tostring(openKey),
 			accent = { r = accent.R, g = accent.G, b = accent.B },
+			autoSave = ModMenu.State.settings.autoSave,
+			rememberToggles = ModMenu.State.settings.rememberToggles,
 			toggles = ModMenu.State.toggles,
 			numbers = ModMenu.State.numbers,
 			waypoints = waypoints,
@@ -98,6 +111,31 @@ ModMenu.Config = {
 		if ok then
 			safeWrite(CONFIG_PATH, encoded)
 		end
+	end,
+	reset = function()
+		-- Back to first-run defaults in memory. Does not touch the file.
+		ModMenu.State.settings.openKey = Enum.KeyCode.RightShift
+		ModMenu.State.settings.accent = Color3.fromRGB(210, 50, 75)
+		ModMenu.State.settings.autoSave = true
+		ModMenu.State.settings.rememberToggles = false
+		table.clear(ModMenu.State.toggles)
+		table.clear(ModMenu.State.numbers)
+		table.clear(ModMenu.State.strings)
+		table.clear(ModMenu.State.waypoints)
+		ModMenu.State.savedPosition = nil
+		ModMenu.State.savedPositionName = nil
+	end,
+	wipe = function()
+		-- Delete the saved file where the executor allows, else overwrite it empty,
+		-- then reset the in-memory state so the running menu matches.
+		local removed = false
+		if type(delfile) == "function" then
+			removed = pcall(delfile, CONFIG_PATH)
+		end
+		if not removed then
+			safeWrite(CONFIG_PATH, "{}")
+		end
+		ModMenu.Config.reset()
 	end,
 }
 

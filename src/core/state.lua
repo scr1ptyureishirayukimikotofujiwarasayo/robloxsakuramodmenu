@@ -5,6 +5,12 @@ ModMenu.State = {
 		openKey = Enum.KeyCode.RightShift,
 		accent = Color3.fromRGB(210, 50, 75),
 		menuSize = UDim2.fromOffset(460, 340),
+		-- Persistence policy:
+		--   autoSave        - write ModMenuConfig.json on every change (Save Now forces it regardless)
+		--   rememberToggles - restore saved feature toggles on load. OFF by default so a
+		--                     server hop / re-run starts with every feature off.
+		autoSave = true,
+		rememberToggles = false,
 	},
 	toggles = {} :: { [string]: boolean },
 	numbers = {} :: { [string]: number },

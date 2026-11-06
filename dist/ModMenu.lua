@@ -1,6 +1,6 @@
 --!strict
 -- Mod Menu (client) - generated from local sources
--- Version: 0.4.3
+-- Version: 0.4.4
 
 -- ===== src\core\compat.lua =====
 --!strict
@@ -118,6 +118,12 @@ ModMenu.State = {
 		openKey = Enum.KeyCode.RightShift,
 		accent = Color3.fromRGB(210, 50, 75),
 		menuSize = UDim2.fromOffset(460, 340),
+		-- Persistence policy:
+		--   autoSave        - write ModMenuConfig.json on every change (Save Now forces it regardless)
+		--   rememberToggles - restore saved feature toggles on load. OFF by default so a
+		--                     server hop / re-run starts with every feature off.
+		autoSave = true,
+		rememberToggles = false,
 	},
 	toggles = {} :: { [string]: boolean },
 	numbers = {} :: { [string]: number },
@@ -190,6 +196,12 @@ ModMenu.Config = {
 		if not raw then return end
 		local ok, decoded = pcall(HttpService.JSONDecode, HttpService, raw)
 		if not ok or type(decoded) ~= "table" then return end
+		if type(decoded.autoSave) == "boolean" then
+			ModMenu.State.settings.autoSave = decoded.autoSave
+		end
+		if type(decoded.rememberToggles) == "boolean" then
+			ModMenu.State.settings.rememberToggles = decoded.rememberToggles
+		end
 		if type(decoded.openKey) == "string" then
 			local k = Enum.KeyCode[decoded.openKey]
 			if k then
@@ -202,7 +214,9 @@ ModMenu.Config = {
 				ModMenu.State.settings.accent = Color3.new(a.r, a.g, a.b)
 			end
 		end
-		if type(decoded.toggles) == "table" then
+		-- Feature toggles are only restored when the user opted in. Otherwise the
+		-- widgets fall back to their defaults (off), so a server hop is clean.
+		if ModMenu.State.settings.rememberToggles and type(decoded.toggles) == "table" then
 			for k, v in decoded.toggles do
 				if type(v) == "boolean" then
 					ModMenu.State.toggles[k] = v
@@ -233,7 +247,10 @@ ModMenu.Config = {
 			end
 		end
 	end,
-	save = function()
+	save = function(force: boolean?)
+		if not force and not ModMenu.State.settings.autoSave then
+			return
+		end
 		local accent = ModMenu.State.settings.accent
 		local openKey = ModMenu.State.settings.openKey
 		local waypoints = {}
@@ -246,6 +263,8 @@ ModMenu.Config = {
 		local data = {
 			openKey = typeof(openKey) == "EnumItem" and openKey.Name or tostring(openKey),
 			accent = { r = accent.R, g = accent.G, b = accent.B },
+			autoSave = ModMenu.State.settings.autoSave,
+			rememberToggles = ModMenu.State.settings.rememberToggles,
 			toggles = ModMenu.State.toggles,
 			numbers = ModMenu.State.numbers,
 			waypoints = waypoints,
@@ -260,6 +279,31 @@ ModMenu.Config = {
 		if ok then
 			safeWrite(CONFIG_PATH, encoded)
 		end
+	end,
+	reset = function()
+		-- Back to first-run defaults in memory. Does not touch the file.
+		ModMenu.State.settings.openKey = Enum.KeyCode.RightShift
+		ModMenu.State.settings.accent = Color3.fromRGB(210, 50, 75)
+		ModMenu.State.settings.autoSave = true
+		ModMenu.State.settings.rememberToggles = false
+		table.clear(ModMenu.State.toggles)
+		table.clear(ModMenu.State.numbers)
+		table.clear(ModMenu.State.strings)
+		table.clear(ModMenu.State.waypoints)
+		ModMenu.State.savedPosition = nil
+		ModMenu.State.savedPositionName = nil
+	end,
+	wipe = function()
+		-- Delete the saved file where the executor allows, else overwrite it empty,
+		-- then reset the in-memory state so the running menu matches.
+		local removed = false
+		if type(delfile) == "function" then
+			removed = pcall(delfile, CONFIG_PATH)
+		end
+		if not removed then
+			safeWrite(CONFIG_PATH, "{}")
+		end
+		ModMenu.Config.reset()
 	end,
 }
 
@@ -2276,6 +2320,12 @@ local C = ModMenu.UI.Components
 local Panels = ModMenu.Menu.Panels
 local T = ModMenu.Theme
 
+-- Ids starting with "settings." are preferences (auto-save, remember-toggles,
+-- background), not feature toggles. Reset and restore must leave them alone.
+local function isPreference(id: string): boolean
+	return string.sub(id, 1, 9) == "settings."
+end
+
 -- Home
 do
 	local p = Panels.home
@@ -2435,27 +2485,53 @@ do
 		ModMenu.Menu.applyBackground()
 	end)
 	C.section(p, "Persistence")
-	C.button(p, "Save Settings", function()
-		pcall(ModMenu.Config.save)
+	C.toggle(p, "settings.autoSave", "Auto-Save", ModMenu.State.settings.autoSave, function(v)
+		ModMenu.State.settings.autoSave = v
+		pcall(ModMenu.Config.save, true) -- the flag itself must persist
+	end)
+	C.toggle(p, "settings.rememberToggles", "Remember Toggles on Load", ModMenu.State.settings.rememberToggles, function(v)
+		ModMenu.State.settings.rememberToggles = v
+		pcall(ModMenu.Config.save, true)
+	end)
+	C.button(p, "Save Now", function()
+		pcall(ModMenu.Config.save, true)
 		ModMenu.Notify("Settings", "Saved")
 	end)
-	C.button(p, "Reset Toggles", function()
-		for k in ModMenu.State.toggles do
-			ModMenu.State.toggles[k] = false
+	C.button(p, "Reset Toggles Now", function()
+		for id, callbacks in ModMenu.UI.toggleApply do
+			if not isPreference(id) and ModMenu.State.toggles[id] then
+				ModMenu.State.toggles[id] = false
+				for _, apply in callbacks do
+					pcall(apply, false)
+				end
+			end
+		end
+		for id, syncers in ModMenu.UI.toggleSync do
+			if not isPreference(id) then
+				for _, sync in syncers do
+					pcall(sync, false)
+				end
+			end
 		end
 		pcall(ModMenu.Config.save)
-		ModMenu.Notify("Settings", "Toggles reset (reload to apply)")
+		ModMenu.Notify("Settings", "All feature toggles turned off")
+	end)
+	C.button(p, "Wipe Saved Config", function()
+		pcall(ModMenu.Config.wipe)
+		ModMenu.Notify("Settings", "Config wiped. Reload to reset the UI.")
 	end)
 end
 
 -- Single explicit restore point. Widgets no longer run their feature while
--- being built, so re-apply only the toggles the user actually saved as ON,
--- once, after the whole UI exists. Nothing else (no slider defaults, no
--- dropdown defaults, no apply(false) resets) runs on load.
-for id, callbacks in ModMenu.UI.toggleApply do
-	if ModMenu.State.toggles[id] == true then
-		for _, apply in callbacks do
-			pcall(apply, true)
+-- being built, so re-apply the toggles loaded from config once, after the whole
+-- UI exists -- and only when the user opted in. Preferences ("settings.") are
+-- skipped: they are read live, never "enabled".
+if ModMenu.State.settings.rememberToggles then
+	for id, callbacks in ModMenu.UI.toggleApply do
+		if not isPreference(id) and ModMenu.State.toggles[id] == true then
+			for _, apply in callbacks do
+				pcall(apply, true)
+			end
 		end
 	end
 end
