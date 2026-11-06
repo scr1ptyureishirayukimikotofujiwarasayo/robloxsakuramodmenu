@@ -86,8 +86,14 @@ local function toggle(parent: Instance, id: string, label: string, initial: bool
 	end)
 
 	ModMenu.State.toggles[id] = state
+	-- Do NOT run the feature at construction. init.luau builds every widget on
+	-- every tab during load, so calling apply() here fired every default/saved
+	-- value before the menu was even opened (gravity, FOV, clock time, camera
+	-- target, Dex "closed", ...). Register the callback instead; init.luau
+	-- re-applies only the toggles the user actually saved as ON.
 	if apply then
-		pcall(apply, state)
+		ModMenu.UI.toggleApply[id] = ModMenu.UI.toggleApply[id] or {}
+		table.insert(ModMenu.UI.toggleApply[id], apply)
 	end
 
 	return row
@@ -127,13 +133,17 @@ local function slider(parent: Instance, id: string, label: string, min: number, 
 	local value = if savedNumber ~= nil then savedNumber else (initial or min)
 	local dragging = false
 
-	local function setValue(v: number)
+	local function render(v: number)
 		value = math.clamp(v, min, max)
 		ModMenu.State.numbers[id] = value
 		local pct = (value - min) / (max - min)
 		fill.Size = UDim2.new(pct, 0, 1, 0)
 		fill.BackgroundColor3 = ModMenu.Theme.accent()
 		lbl.Text = label .. ": " .. string.format("%.1f", value)
+	end
+
+	local function setValue(v: number)
+		render(v)
 		if apply then pcall(apply, value) end
 	end
 
@@ -158,7 +168,8 @@ local function slider(parent: Instance, id: string, label: string, min: number, 
 		end
 	end))
 
-	setValue(value)
+	-- Show the stored/default value without running the feature on load.
+	render(value)
 	return row
 end
 
@@ -255,14 +266,14 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 	end)
 
 	ModMenu.State.strings[id] = selected
-	if apply then
-		pcall(apply, selected)
-	end
+	-- Do not run apply() at construction: a dropdown's default item was switching
+	-- the camera to the first player and firing a player-info notification on load.
 	return row
 end
 
 ModMenu.UI = ModMenu.UI or {}
 ModMenu.UI.toggleSync = ModMenu.UI.toggleSync or {}
+ModMenu.UI.toggleApply = ModMenu.UI.toggleApply or {}
 ModMenu.UI.Components = {
 	button = button,
 	toggle = toggle,

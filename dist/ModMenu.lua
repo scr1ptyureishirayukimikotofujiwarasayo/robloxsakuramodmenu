@@ -1,8 +1,8 @@
 --!strict
 -- Mod Menu (client) - generated from local sources
--- Version: 0.4.2
+-- Version: 0.4.3
 
--- ===== src\core\compat.luau =====
+-- ===== src\core\compat.lua =====
 --!strict
 -- core/compat.luau
 local function missing(expectedType: string, value: any, fallback: any): any
@@ -59,7 +59,7 @@ _G = _G or {}
 _G.ModMenu = ModMenu
 ModMenu.Compat = { missing = missing }
 
--- ===== src\core\services.luau =====
+-- ===== src\core\services.lua =====
 --!strict
 -- core/services.luau
 local Players = game:GetService("Players")
@@ -93,7 +93,7 @@ ModMenu.Services = cachedServices
 ModMenu.LocalPlayer = cachedServices.Players.LocalPlayer
 ModMenu.Camera = cachedServices.Workspace.CurrentCamera
 
--- ===== src\core\notify.luau =====
+-- ===== src\core\notify.lua =====
 --!strict
 -- core/notify.luau
 local S = ModMenu.Services
@@ -110,7 +110,7 @@ ModMenu.Notify = function(title: string, text: string, duration: number?)
 	end)
 end
 
--- ===== src\core\state.luau =====
+-- ===== src\core\state.lua =====
 --!strict
 -- core/state.luau
 ModMenu.State = {
@@ -159,7 +159,7 @@ ModMenu.State.clearConnections = function(id: string)
 	end
 end
 
--- ===== src\core\config.luau =====
+-- ===== src\core\config.lua =====
 --!strict
 -- core/config.luau
 local S = ModMenu.Services
@@ -265,7 +265,7 @@ ModMenu.Config = {
 
 pcall(ModMenu.Config.load)
 
--- ===== src\ui\theme.luau =====
+-- ===== src\ui\theme.lua =====
 --!strict
 -- ui/theme.luau
 ModMenu.Theme = {
@@ -320,7 +320,7 @@ ModMenu.Theme.accent = function()
 	return ModMenu.State.settings.accent
 end
 
--- ===== src\ui\components.luau =====
+-- ===== src\ui\components.lua =====
 --!strict
 -- ui/components.luau
 local S = ModMenu.Services
@@ -409,8 +409,14 @@ local function toggle(parent: Instance, id: string, label: string, initial: bool
 	end)
 
 	ModMenu.State.toggles[id] = state
+	-- Do NOT run the feature at construction. init.luau builds every widget on
+	-- every tab during load, so calling apply() here fired every default/saved
+	-- value before the menu was even opened (gravity, FOV, clock time, camera
+	-- target, Dex "closed", ...). Register the callback instead; init.luau
+	-- re-applies only the toggles the user actually saved as ON.
 	if apply then
-		pcall(apply, state)
+		ModMenu.UI.toggleApply[id] = ModMenu.UI.toggleApply[id] or {}
+		table.insert(ModMenu.UI.toggleApply[id], apply)
 	end
 
 	return row
@@ -450,13 +456,17 @@ local function slider(parent: Instance, id: string, label: string, min: number, 
 	local value = if savedNumber ~= nil then savedNumber else (initial or min)
 	local dragging = false
 
-	local function setValue(v: number)
+	local function render(v: number)
 		value = math.clamp(v, min, max)
 		ModMenu.State.numbers[id] = value
 		local pct = (value - min) / (max - min)
 		fill.Size = UDim2.new(pct, 0, 1, 0)
 		fill.BackgroundColor3 = ModMenu.Theme.accent()
 		lbl.Text = label .. ": " .. string.format("%.1f", value)
+	end
+
+	local function setValue(v: number)
+		render(v)
 		if apply then pcall(apply, value) end
 	end
 
@@ -481,7 +491,8 @@ local function slider(parent: Instance, id: string, label: string, min: number, 
 		end
 	end))
 
-	setValue(value)
+	-- Show the stored/default value without running the feature on load.
+	render(value)
 	return row
 end
 
@@ -578,14 +589,14 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 	end)
 
 	ModMenu.State.strings[id] = selected
-	if apply then
-		pcall(apply, selected)
-	end
+	-- Do not run apply() at construction: a dropdown's default item was switching
+	-- the camera to the first player and firing a player-info notification on load.
 	return row
 end
 
 ModMenu.UI = ModMenu.UI or {}
 ModMenu.UI.toggleSync = ModMenu.UI.toggleSync or {}
+ModMenu.UI.toggleApply = ModMenu.UI.toggleApply or {}
 ModMenu.UI.Components = {
 	button = button,
 	toggle = toggle,
@@ -594,7 +605,7 @@ ModMenu.UI.Components = {
 	dropdown = dropdown,
 }
 
--- ===== src\ui\menu.luau =====
+-- ===== src\ui\menu.lua =====
 --!strict
 -- ui/menu.luau
 local S = ModMenu.Services
@@ -1064,7 +1075,7 @@ setOpen(false)
 applyZOrder()
 -- UI built
 
--- ===== src\features\movement.luau =====
+-- ===== src\features\movement.lua =====
 --!strict
 -- features/movement.luau
 local S = ModMenu.Services
@@ -1293,7 +1304,7 @@ ModMenu.Features.Movement.resetMovement = function()
 	ModMenu.Features.Movement.setGravity(196.2)
 end
 
--- ===== src\features\visual.luau =====
+-- ===== src\features\visual.lua =====
 --!strict
 -- features/visual.luau
 local S = ModMenu.Services
@@ -1381,7 +1392,7 @@ ModMenu.Features.Visual.esp = function(enabled: boolean)
 	table.insert(ModMenu.State.getConnections(id), conn2)
 end
 
--- ===== src\features\character.luau =====
+-- ===== src\features\character.lua =====
 --!strict
 -- features/character.luau
 local S = ModMenu.Services
@@ -1517,7 +1528,7 @@ ModMenu.Features.Character.blockHats = function(enabled: boolean)
 	end
 end
 
--- ===== src\features\utility.luau =====
+-- ===== src\features\utility.lua =====
 --!strict
 -- features/utility.luau
 local S = ModMenu.Services
@@ -1679,7 +1690,7 @@ ModMenu.Features.Utility.playerInfo = function(targetName: string?)
 	ModMenu.Notify("Player Info", string.format("%s | Age: %d | Id: %d", target.Name, target.AccountAge, target.UserId))
 end
 
--- ===== src\features\teleport.luau =====
+-- ===== src\features\teleport.lua =====
 --!strict
 -- features/teleport.luau
 local S = ModMenu.Services
@@ -1741,7 +1752,7 @@ ModMenu.Features.Teleport.rejoin = function()
 	end)
 end
 
--- ===== src\features\world.luau =====
+-- ===== src\features\world.lua =====
 --!strict
 -- features/world.luau
 local S = ModMenu.Services
@@ -1761,7 +1772,7 @@ ModMenu.Features.World.antiLag = function(enabled: boolean)
 	end
 end
 
--- ===== src\features\protection.luau =====
+-- ===== src\features\protection.lua =====
 --!strict
 -- features/protection.luau
 local S = ModMenu.Services
@@ -1899,7 +1910,7 @@ ModMenu.Features.Protection.antiTeleport = function(enabled: boolean)
 	table.insert(ModMenu.State.getConnections(id), conn)
 end
 
--- ===== src\features\interaction.luau =====
+-- ===== src\features\interaction.lua =====
 --!strict
 -- features/interaction.luau
 local S = ModMenu.Services
@@ -2002,7 +2013,7 @@ ModMenu.Features.Interaction.touchInterestLoop = function(enabled: boolean)
 	table.insert(ModMenu.State.getConnections(id), conn)
 end
 
--- ===== src\features\misc.luau =====
+-- ===== src\features\misc.lua =====
 --!strict
 -- features/misc.luau
 local S = ModMenu.Services
@@ -2031,7 +2042,7 @@ ModMenu.Features.Misc.hideAllGuis = function(enabled: boolean)
 	end
 end
 
--- ===== src\features\dex.luau =====
+-- ===== src\features\dex.lua =====
 --!strict
 -- features/dex.luau
 -- Toggleable Dex Explorer: loads the self-contained embedded build from the
@@ -2127,7 +2138,7 @@ ModMenu.Features.Dex.toggle = function(state: boolean)
 	end
 end
 
--- ===== src\features\reviz.luau =====
+-- ===== src\features\reviz.lua =====
 --!strict
 -- features/reviz.luau
 -- Toggleable Reviz Admin: fetches the script from the repo on enable and runs
@@ -2154,7 +2165,7 @@ local function candidateParents(): { Instance }
 		end
 	end
 	local okCore, coreGui = pcall(function() return game:GetService("CoreGui") end)
-	if okCore then
+	if okCore and coreGui then
 		table.insert(parents, coreGui)
 	end
 	local lp = Players.LocalPlayer
@@ -2188,12 +2199,16 @@ end
 -- destroy any GUIs it left behind.
 local function unloadExisting()
 	local hook
-	local okEnv, env = pcall(function() return getgenv() end)
-	if okEnv and type(env) == "table" then
-		hook = env.RevizAdminUnload
-	end
-	if type(hook) ~= "function" and type(_G) == "table" then
+	-- The payload writes the hook to _G (and getgenv). Real's getgenv() views are
+	-- not table-stable, so prefer the plain global and only fall back to getgenv.
+	if type(_G) == "table" and type(_G.RevizAdminUnload) == "function" then
 		hook = _G.RevizAdminUnload
+	end
+	if type(hook) ~= "function" then
+		local okEnv, env = pcall(function() return getgenv() end)
+		if okEnv and type(env) == "table" and type(env.RevizAdminUnload) == "function" then
+			hook = env.RevizAdminUnload
+		end
 	end
 	if type(hook) == "function" then
 		pcall(hook)
@@ -2225,9 +2240,17 @@ ModMenu.Features.Reviz.open = function()
 		end)
 		if ok then
 			revizLoaded = true
-			ModMenu.Notify("Reviz Admin", "Loaded. Press ; for the command bar.")
+			-- A finished chunk with no GUI means it ran but could not parent its
+			-- ScreenGui anywhere. Never let that be silent.
+			if ModMenu.Features.Reviz.isOpen() then
+				ModMenu.Notify("Reviz Admin", "Loaded. Press ; for the command bar.")
+			else
+				warn("[ModMenu] reviz.lua ran but no RevizAdmin GUI was found")
+				ModMenu.Notify("Reviz Admin", "Ran, but no command bar appeared (see console).")
+			end
 		else
 			revizLoaded = false
+			warn("[ModMenu] Reviz load failed: " .. tostring(err))
 			ModMenu.Notify("Reviz Admin", "Failed to load: " .. tostring(err))
 		end
 	end)
@@ -2246,7 +2269,7 @@ end
 -- init.luau re-activates it afterwards if the saved toggle is on.
 unloadExisting()
 
--- ===== src\init.luau =====
+-- ===== src\init.lua =====
 --!strict
 -- init.luau
 local C = ModMenu.UI.Components
@@ -2423,6 +2446,18 @@ do
 		pcall(ModMenu.Config.save)
 		ModMenu.Notify("Settings", "Toggles reset (reload to apply)")
 	end)
+end
+
+-- Single explicit restore point. Widgets no longer run their feature while
+-- being built, so re-apply only the toggles the user actually saved as ON,
+-- once, after the whole UI exists. Nothing else (no slider defaults, no
+-- dropdown defaults, no apply(false) resets) runs on load.
+for id, callbacks in ModMenu.UI.toggleApply do
+	if ModMenu.State.toggles[id] == true then
+		for _, apply in callbacks do
+			pcall(apply, true)
+		end
+	end
 end
 
 ModMenu.Menu.applyZOrder()

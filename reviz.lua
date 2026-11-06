@@ -178,6 +178,9 @@ local RevizEnv = revizGetGenv()
 if type(RevizEnv.RevizAdminUnload) == "function" then
     pcall(RevizEnv.RevizAdminUnload)
 end
+if type(_G.RevizAdminUnload) == "function" and _G.RevizAdminUnload ~= RevizEnv.RevizAdminUnload then
+    pcall(_G.RevizAdminUnload)
+end
 
 local revizConnections = {}
 local function on(signal, handler)
@@ -224,13 +227,34 @@ local StarterGuiService = game:GetService("StarterGui")
 local TextChatService = game:GetService("TextChatService")
 local WorkspaceService = game:GetService("Workspace")
 
-local function getGuiParent()
-    local ok, parent = pcall(function()
-        if type(gethui) == "function" then return gethui() end
-        return nil
-    end)
-    if ok and parent then return parent end
-    return game:GetService("CoreGui")
+-- Every container a Reviz ScreenGui may live in, best first. CoreGui is listed
+-- but assigning a ScreenGui straight to it throws on most executors, so every
+-- attempt below is pcall'd. Parenting unguarded is exactly what made "toggle
+-- Reviz on" silently do nothing: the ScreenGui failed to parent and the error
+-- was swallowed by the caller's pcall.
+local function guiParents()
+    local parents = {}
+    if type(gethui) == "function" then
+        local ok, parent = pcall(gethui)
+        if ok and typeof(parent) == "Instance" then table.insert(parents, parent) end
+    end
+    local okCore, coreGui = pcall(function() return game:GetService("CoreGui") end)
+    if okCore and typeof(coreGui) == "Instance" then table.insert(parents, coreGui) end
+    local lp = game:GetService("Players").LocalPlayer
+    local pg = lp and lp:FindFirstChild("PlayerGui")
+    if pg then table.insert(parents, pg) end
+    return parents
+end
+
+-- Parents a ScreenGui to the first container that actually accepts it. Returns
+-- false (never throws) when none work, so the caller can report it instead of
+-- dying silently.
+local function parentGui(gui)
+    for _, parent in ipairs(guiParents()) do
+        local ok = pcall(function() gui.Parent = parent end)
+        if ok and gui.Parent ~= nil then return true end
+    end
+    return false
 end
 
 local function safeSetCore(name, data)
@@ -349,7 +373,7 @@ local function pgsEnabled()
 end
 
 local function destroyGui(name)
-    for _, parent in ipairs({ getGuiParent(), game:GetService("CoreGui") }) do
+    for _, parent in ipairs(guiParents()) do
         local ok, gui = pcall(function() return parent:FindFirstChild(name) end)
         if ok and gui then gui:Destroy() end
     end
@@ -372,6 +396,11 @@ RevizEnv.RevizAdminUnload = function()
     destroyGui("RevizAdminCMDS")
     destroyGui("RevizAdminIntro")
 end
+
+-- Register the hook on the plain global as well: on some executors getgenv()
+-- hands back views that are not table-stable, so a hook written only through
+-- one view may not be readable through another. _G is always the same table.
+_G.RevizAdminUnload = RevizEnv.RevizAdminUnload
 
 -- The original never initialised these, which made spam/fly misbehave.
 if spamdelay == nil then spamdelay = 1 end
@@ -481,7 +510,9 @@ local ScreenGui = Instance.new("ScreenGui")
 local Frame = Instance.new("Frame")
 local CMDBAR = Instance.new("TextBox")
 ScreenGui.Name = "RevizAdmin"
-ScreenGui.Parent = getGuiParent()
+if not parentGui(ScreenGui) then
+    warn("[reviz] could not parent the command bar to gethui/CoreGui/PlayerGui")
+end
 Frame.Parent = ScreenGui
 Frame.BackgroundColor3 = Color3.new(0.3, 0.1, 0.1)
 Frame.BackgroundTransparency = 0.3
@@ -509,7 +540,9 @@ local ScrollingFrame = Instance.new("ScrollingFrame")
 local TextLabel = Instance.new("TextLabel")
 local closegui = Instance.new("TextButton")
 CMDS.Name = "RevizAdminCMDS"
-CMDS.Parent = getGuiParent()
+if not parentGui(CMDS) then
+    warn("[reviz] could not parent the CMDS window")
+end
 CMDSFRAME.Name = "CMDSFRAME"
 CMDSFRAME.Parent = CMDS
 CMDSFRAME.Active = true
@@ -558,10 +591,10 @@ onGuarded(game:GetService('RunService').Stepped, function()
         lplayer.Character.HumanoidRootPart.CFrame = game:GetService("Players")[spinplr.Name].Character.HumanoidRootPart.CFrame
     end
     if followed then
-        lplayer.Character.HumanoidRootPart.CFrame = game:GetService("Players")[flwplr.Name].Character.HumanoidRootPart.CFrame + game:GetService("Players")[flwplr.Name].Character.HumanoidRootPart.CFrame.lookVector * -5
+        lplayer.Character.HumanoidRootPart.CFrame = game:GetService("Players")[flwplr.Name].Character.HumanoidRootPart.CFrame + game:GetService("Players")[flwplr.Name].Character.HumanoidRootPart.CFrame.LookVector * -5
     end
     if traill then
-        lplayer.Character.HumanoidRootPart.CFrame = game:GetService("Players")[trlplr.Name].Character.HumanoidRootPart.CFrame + game:GetService("Players")[trlplr.Name].Character.HumanoidRootPart.CFrame.lookVector * 5
+        lplayer.Character.HumanoidRootPart.CFrame = game:GetService("Players")[trlplr.Name].Character.HumanoidRootPart.CFrame + game:GetService("Players")[trlplr.Name].Character.HumanoidRootPart.CFrame.LookVector * 5
     end
     if annoying then
         lplayer.Character.HumanoidRootPart.CFrame = game:GetService("Players")[annplr.Name].Character.HumanoidRootPart.CFrame
@@ -1147,10 +1180,10 @@ local function Execute(msg)
         SPEED = 0
         end
         if (CONTROL.L + CONTROL.R) ~= 0 or (CONTROL.F + CONTROL.B) ~= 0 then
-        BV.Velocity = ((workspace.CurrentCamera.CFrame.lookVector * (CONTROL.F + CONTROL.B)) + ((workspace.CurrentCamera.CFrame * CFrame.new(CONTROL.L + CONTROL.R, (CONTROL.F + CONTROL.B) * 0.2, 0).p) - workspace.CurrentCamera.CFrame.p)) * SPEED
+        BV.Velocity = ((workspace.CurrentCamera.CFrame.LookVector * (CONTROL.F + CONTROL.B)) + ((workspace.CurrentCamera.CFrame * CFrame.new(CONTROL.L + CONTROL.R, (CONTROL.F + CONTROL.B) * 0.2, 0).p) - workspace.CurrentCamera.CFrame.p)) * SPEED
         lCONTROL = {F = CONTROL.F, B = CONTROL.B, L = CONTROL.L, R = CONTROL.R}
         elseif (CONTROL.L + CONTROL.R) == 0 and (CONTROL.F + CONTROL.B) == 0 and SPEED ~= 0 then
-        BV.Velocity = ((workspace.CurrentCamera.CFrame.lookVector * (lCONTROL.F + lCONTROL.B)) + ((workspace.CurrentCamera.CFrame * CFrame.new(lCONTROL.L + lCONTROL.R, (lCONTROL.F + lCONTROL.B) * 0.2, 0).p) - workspace.CurrentCamera.CFrame.p)) * SPEED
+        BV.Velocity = ((workspace.CurrentCamera.CFrame.LookVector * (lCONTROL.F + lCONTROL.B)) + ((workspace.CurrentCamera.CFrame * CFrame.new(lCONTROL.L + lCONTROL.R, (lCONTROL.F + lCONTROL.B) * 0.2, 0).p) - workspace.CurrentCamera.CFrame.p)) * SPEED
         else
         BV.Velocity = Vector3.new(0, 0.1, 0)
         end
@@ -2023,7 +2056,7 @@ local function tp()
     for i, player in ipairs(game:GetService("Players"):GetPlayers()) do
         if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
             if player.Name == brplr then
-                player.Character.HumanoidRootPart.CFrame = lplayer.Character.HumanoidRootPart.CFrame + lplayer.Character.HumanoidRootPart.CFrame.lookVector * 2
+                player.Character.HumanoidRootPart.CFrame = lplayer.Character.HumanoidRootPart.CFrame + lplayer.Character.HumanoidRootPart.CFrame.LookVector * 2
             end
         end
     end
@@ -2031,7 +2064,7 @@ end
 local function tpall()
     for i, player in ipairs(game:GetService("Players"):GetPlayers()) do
         if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            player.Character.HumanoidRootPart.CFrame = lplayer.Character.HumanoidRootPart.CFrame + lplayer.Character.HumanoidRootPart.CFrame.lookVector * 3
+            player.Character.HumanoidRootPart.CFrame = lplayer.Character.HumanoidRootPart.CFrame + lplayer.Character.HumanoidRootPart.CFrame.LookVector * 3
         end
     end
 end
@@ -2106,7 +2139,7 @@ local intro = Instance.new("ScreenGui")
 local Frame = Instance.new("Frame")
 local ImageLabel = Instance.new("ImageLabel")
 intro.Name = "RevizAdminIntro"
-intro.Parent = getGuiParent()
+parentGui(intro)
 Frame.Parent = intro
 Frame.BackgroundColor3 = Color3.new(1, 1, 1)
 Frame.BackgroundTransparency = 1

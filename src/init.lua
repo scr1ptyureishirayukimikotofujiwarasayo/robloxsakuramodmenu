@@ -176,6 +176,18 @@ do
 	end)
 end
 
+-- Single explicit restore point. Widgets no longer run their feature while
+-- being built, so re-apply only the toggles the user actually saved as ON,
+-- once, after the whole UI exists. Nothing else (no slider defaults, no
+-- dropdown defaults, no apply(false) resets) runs on load.
+for id, callbacks in ModMenu.UI.toggleApply do
+	if ModMenu.State.toggles[id] == true then
+		for _, apply in callbacks do
+			pcall(apply, true)
+		end
+	end
+end
+
 ModMenu.Menu.applyZOrder()
 ModMenu.Notify("Mod Menu", "Loaded. Press " .. ModMenu.State.settings.openKey.Name .. " to open.")
 -- init complete

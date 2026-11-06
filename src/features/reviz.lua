@@ -24,7 +24,7 @@ local function candidateParents(): { Instance }
 		end
 	end
 	local okCore, coreGui = pcall(function() return game:GetService("CoreGui") end)
-	if okCore then
+	if okCore and coreGui then
 		table.insert(parents, coreGui)
 	end
 	local lp = Players.LocalPlayer
@@ -58,12 +58,16 @@ end
 -- destroy any GUIs it left behind.
 local function unloadExisting()
 	local hook
-	local okEnv, env = pcall(function() return getgenv() end)
-	if okEnv and type(env) == "table" then
-		hook = env.RevizAdminUnload
-	end
-	if type(hook) ~= "function" and type(_G) == "table" then
+	-- The payload writes the hook to _G (and getgenv). Real's getgenv() views are
+	-- not table-stable, so prefer the plain global and only fall back to getgenv.
+	if type(_G) == "table" and type(_G.RevizAdminUnload) == "function" then
 		hook = _G.RevizAdminUnload
+	end
+	if type(hook) ~= "function" then
+		local okEnv, env = pcall(function() return getgenv() end)
+		if okEnv and type(env) == "table" and type(env.RevizAdminUnload) == "function" then
+			hook = env.RevizAdminUnload
+		end
 	end
 	if type(hook) == "function" then
 		pcall(hook)
@@ -95,9 +99,17 @@ ModMenu.Features.Reviz.open = function()
 		end)
 		if ok then
 			revizLoaded = true
-			ModMenu.Notify("Reviz Admin", "Loaded. Press ; for the command bar.")
+			-- A finished chunk with no GUI means it ran but could not parent its
+			-- ScreenGui anywhere. Never let that be silent.
+			if ModMenu.Features.Reviz.isOpen() then
+				ModMenu.Notify("Reviz Admin", "Loaded. Press ; for the command bar.")
+			else
+				warn("[ModMenu] reviz.lua ran but no RevizAdmin GUI was found")
+				ModMenu.Notify("Reviz Admin", "Ran, but no command bar appeared (see console).")
+			end
 		else
 			revizLoaded = false
+			warn("[ModMenu] Reviz load failed: " .. tostring(err))
 			ModMenu.Notify("Reviz Admin", "Failed to load: " .. tostring(err))
 		end
 	end)
