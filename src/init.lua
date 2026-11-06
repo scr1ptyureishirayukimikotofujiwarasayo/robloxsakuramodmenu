@@ -4,12 +4,6 @@ local C = ModMenu.UI.Components
 local Panels = ModMenu.Menu.Panels
 local T = ModMenu.Theme
 
--- Ids starting with "settings." are preferences (auto-save, remember-toggles,
--- background), not feature toggles. Reset and restore must leave them alone.
-local function isPreference(id: string): boolean
-	return string.sub(id, 1, 9) == "settings."
-end
-
 -- Home
 do
 	local p = Panels.home
@@ -118,6 +112,7 @@ do
 	C.section(p, "Scripts & Explorer")
 	C.toggle(p, "utility.dex", "Dex Explorer", false, function(v) ModMenu.Features.Dex.toggle(v) end)
 	C.toggle(p, "utility.reviz", "Reviz Admin", false, function(v) ModMenu.Features.Reviz.toggle(v) end)
+	C.toggle(p, "utility.shattervast", "ShatterVast Admin", false, function(v) ModMenu.Features.Shattervast.toggle(v) end)
 	C.section(p, "Movement Tools")
 	C.toggle(p, "utility.clickTP", "Click Teleport", false, function(v) ModMenu.Features.Movement.clickTeleport(v) end)
 	C.button(p, "Save Position", function() ModMenu.Features.Movement.savePosition() end)
@@ -169,55 +164,17 @@ do
 		ModMenu.Menu.applyBackground()
 	end)
 	C.section(p, "Persistence")
-	C.toggle(p, "settings.autoSave", "Auto-Save", ModMenu.State.settings.autoSave, function(v)
-		ModMenu.State.settings.autoSave = v
-		pcall(ModMenu.Config.save, true) -- the flag itself must persist
-	end)
-	C.toggle(p, "settings.rememberToggles", "Remember Toggles on Load", ModMenu.State.settings.rememberToggles, function(v)
-		ModMenu.State.settings.rememberToggles = v
-		pcall(ModMenu.Config.save, true)
-	end)
-	C.button(p, "Save Now", function()
-		pcall(ModMenu.Config.save, true)
+	C.button(p, "Save Settings", function()
+		pcall(ModMenu.Config.save)
 		ModMenu.Notify("Settings", "Saved")
 	end)
-	C.button(p, "Reset Toggles Now", function()
-		for id, callbacks in ModMenu.UI.toggleApply do
-			if not isPreference(id) and ModMenu.State.toggles[id] then
-				ModMenu.State.toggles[id] = false
-				for _, apply in callbacks do
-					pcall(apply, false)
-				end
-			end
-		end
-		for id, syncers in ModMenu.UI.toggleSync do
-			if not isPreference(id) then
-				for _, sync in syncers do
-					pcall(sync, false)
-				end
-			end
+	C.button(p, "Reset Toggles", function()
+		for k in ModMenu.State.toggles do
+			ModMenu.State.toggles[k] = false
 		end
 		pcall(ModMenu.Config.save)
-		ModMenu.Notify("Settings", "All feature toggles turned off")
+		ModMenu.Notify("Settings", "Toggles reset (reload to apply)")
 	end)
-	C.button(p, "Wipe Saved Config", function()
-		pcall(ModMenu.Config.wipe)
-		ModMenu.Notify("Settings", "Config wiped. Reload to reset the UI.")
-	end)
-end
-
--- Single explicit restore point. Widgets no longer run their feature while
--- being built, so re-apply the toggles loaded from config once, after the whole
--- UI exists -- and only when the user opted in. Preferences ("settings.") are
--- skipped: they are read live, never "enabled".
-if ModMenu.State.settings.rememberToggles then
-	for id, callbacks in ModMenu.UI.toggleApply do
-		if not isPreference(id) and ModMenu.State.toggles[id] == true then
-			for _, apply in callbacks do
-				pcall(apply, true)
-			end
-		end
-	end
 end
 
 ModMenu.Menu.applyZOrder()

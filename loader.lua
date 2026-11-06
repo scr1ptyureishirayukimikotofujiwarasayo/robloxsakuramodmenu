@@ -40,6 +40,7 @@ run("src/features/interaction.lua")
 run("src/features/misc.lua")
 run("src/features/dex.lua")
 run("src/features/reviz.lua")
+run("src/features/shattervast.lua")
 run("src/init.lua")
 
 return _G.ModMenu
