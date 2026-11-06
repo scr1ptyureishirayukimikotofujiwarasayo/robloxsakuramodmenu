@@ -2316,7 +2316,7 @@ unloadExisting()
 -- ===== src\features\shattervast.lua =====
 --!strict
 -- features/shattervast.luau
--- Toggleable ShatterVast Admin: fetches the revived script from the repo on
+-- Toggleable Grac3Haz3Lion's ShatterVast Admin: fetches the improved script from the repo on
 -- enable and runs it through loadstring, then calls the unload hook the script
 -- exposes (getgenv().ShatterVastUnload) on disable. The script unloads any
 -- previous run before loading, so activating it never stacks command bars.
@@ -2392,7 +2392,7 @@ end
 
 ModMenu.Features.Shattervast.close = function()
 	unloadExisting()
-	ModMenu.Notify("ShatterVast Admin", "Closed.")
+	ModMenu.Notify("Grac3Haz3Lion's ShatterVast Admin", "Closed.")
 end
 
 ModMenu.Features.Shattervast.open = function()
@@ -2411,10 +2411,10 @@ ModMenu.Features.Shattervast.open = function()
 		end)
 		if ok then
 			shattervastLoaded = true
-			ModMenu.Notify("ShatterVast Admin", "Loaded. Press ; for the command bar.")
+			ModMenu.Notify("Grac3Haz3Lion's ShatterVast Admin", "Loaded. Press ; for the command bar.")
 		else
 			shattervastLoaded = false
-			ModMenu.Notify("ShatterVast Admin", "Failed to load: " .. tostring(err))
+			ModMenu.Notify("Grac3Haz3Lion's ShatterVast Admin", "Failed to load: " .. tostring(err))
 		end
 	end)
 end
@@ -2428,7 +2428,7 @@ ModMenu.Features.Shattervast.toggle = function(state: boolean)
 	end
 end
 
--- A re-executed menu may leave a previous ShatterVast running; clean it up on load.
+-- A re-executed menu may leave a previous Grac3Haz3Lion's ShatterVast running; clean it up on load.
 -- init.luau re-activates it afterwards if the saved toggle is on.
 unloadExisting()
 
@@ -2553,7 +2553,7 @@ do
 	C.section(p, "Scripts & Explorer")
 	C.toggle(p, "utility.dex", "Dex Explorer", false, function(v) ModMenu.Features.Dex.toggle(v) end)
 	C.toggle(p, "utility.reviz", "Reviz Admin", false, function(v) ModMenu.Features.Reviz.toggle(v) end)
-	C.toggle(p, "utility.shattervast", "ShatterVast Admin", false, function(v) ModMenu.Features.Shattervast.toggle(v) end)
+	C.toggle(p, "utility.shattervast", "Grac3Haz3Lion's ShatterVast Admin", false, function(v) ModMenu.Features.Shattervast.toggle(v) end)
 	C.section(p, "Movement Tools")
 	C.toggle(p, "utility.clickTP", "Click Teleport", false, function(v) ModMenu.Features.Movement.clickTeleport(v) end)
 	C.button(p, "Save Position", function() ModMenu.Features.Movement.savePosition() end)
