@@ -409,7 +409,7 @@ local function main()
 			if con then con:Disconnect() con = nil end
 			if target then
 				con = target.Changed:Connect(function(prop)
-					if not disabled and prop == "AbsolutePosition" or prop == "AbsoluteSize" then
+					if not disabled and (prop == "AbsolutePosition" or prop == "AbsoluteSize") then
 						update()
 					end
 				end)
