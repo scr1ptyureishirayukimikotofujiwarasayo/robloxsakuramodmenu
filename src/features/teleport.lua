@@ -36,8 +36,12 @@ ModMenu.Features.Teleport.copyPosition = function()
 	if r then
 		local pos = r.Position
 		local text = string.format("%.2f, %.2f, %.2f", pos.X, pos.Y, pos.Z)
-		if everyClipboard then everyClipboard(text) end
-		ModMenu.Notify("Position", "Copied: " .. text)
+		if everyClipboard then
+			everyClipboard(text)
+			ModMenu.Notify("Position", "Copied: " .. text)
+		else
+			ModMenu.Notify("Position", "Clipboard unavailable. Position: " .. text)
+		end
 	end
 end
 
@@ -47,7 +51,8 @@ local rejoinQueued = false
 ModMenu.Features.Teleport.rejoin = function()
 	-- Teleports create a fresh DataModel: queue the loader so the menu
 	-- rebuilds itself in the new session (needs executor teleport-queue support).
-	local queue = queue_on_teleport or (syn and syn.queue_on_teleport)
+	-- util compat resolves queue_on_teleport under several executor names.
+	local queue = queueteleport or queue_on_teleport or (syn and syn.queue_on_teleport)
 	if queue and not rejoinQueued then
 		pcall(queue, REJOIN_LOADSTRING)
 		rejoinQueued = true

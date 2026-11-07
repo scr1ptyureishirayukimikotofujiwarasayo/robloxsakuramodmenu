@@ -1,4 +1,4 @@
-# Mod Menu 0.4.4
+# Mod Menu 0.4.5
 
 Client-side Roblox mod menu generated from the supplied source files.
 
@@ -77,6 +77,29 @@ The menu is organised into tabs. What each one currently does:
   missing. If `getcustomasset` is unavailable it falls back to the uploaded decal id in
   `BACKGROUND_ASSET_ID` (`src/ui/menu.luau`), then to a solid themed background.
 
+## Fixes in 0.4.5
+
+- Re-executing the menu now **reverts every active effect** before `State` is replaced
+  (Noclip, Lock Workspace, Workspace Visibility, Fullbright, Invisible, Click Delete hidden
+  parts, Block Hats, Hide Other GUIs, Tool Reach, a running exploiter payload), instead of
+  leaving them applied and un-togglable.
+- `Fly` and `Float Platform` recreate their BodyMover on the new character after a respawn
+  instead of re-parenting a destroyed instance (which errored every frame and killed the
+  feature until it was toggled off/on).
+- `Click Teleport` and `Click Delete` use `UserInputService` with the `gameProcessed` filter,
+  so clicking the menu (or any game GUI) no longer teleports you or deletes the part behind
+  the window.
+- `Block Hats` now also hides MeshPart-based (modern) hats, not just classic `SpecialMesh` hats.
+- `Invisible` also zeroes the Humanoid name/health display, so the floating nametag is hidden.
+- `No Limbs` combined with `No Arms` / `No Legs` no longer desyncs: the limb groups are
+  recomputed from the toggles in one pass.
+- `Reset Movement` pushes the restored values back into the sliders, and `Wipe Saved Config`
+  re-syncs the Settings UI (open-key dropdown, preference toggles, background).
+- `Copy Position` no longer claims "Copied" on executors without a clipboard function, and
+  `Anti-Lag` restores the original rendering quality when switched off.
+- Dex / Reviz / ShatterVast no longer stay loaded if you switch the toggle off before the
+  remote script finishes loading.
+
 ## Fixes in 0.4.4
 
 - `Auto Click Detectors` now passes a numeric distance to `fireclickdetector`, and
@@ -91,8 +114,9 @@ The menu is organised into tabs. What each one currently does:
   GlobalShadows, FogEnd, FogStart) instead of clobbering it.
 - `No Limbs` / `No Arms` / `No Legs` hide limbs safely without breaking the rig.
 - `Teleport to Spawn` finds spawns anywhere in the workspace and reports when none exist.
-- Player dropdowns refresh as players join/leave; re-executing the menu no longer stacks
-  old feature loops/connections; `Hide Other GUIs` only re-enables GUIs it disabled.
+- Player dropdowns refresh as players join/leave; re-executing the menu reverts the active
+  features (see 0.4.5), disconnects the old feature loops/connections, and destroys the old
+  window, so re-running never stacks menus; `Hide Other GUIs` only re-enables GUIs it disabled.
 
 ## Credits
 

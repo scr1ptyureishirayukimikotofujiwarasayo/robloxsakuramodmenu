@@ -46,7 +46,11 @@ ModMenu.Features.Movement.setJumpPower = function(value: number)
 	if h then
 		if ModMenu.State.originalJumpPower == nil then
 			ModMenu.State.originalJumpPower = h.JumpPower
+			ModMenu.State.originalUseJumpPower = h.UseJumpPower
 		end
+		-- Games on the newer JumpHeight mode ignore JumpPower entirely; force
+		-- power mode on so the slider actually changes jump height.
+		h.UseJumpPower = true
 		h.JumpPower = value
 	end
 end
@@ -63,23 +67,38 @@ ModMenu.Features.Movement.fly = function(enabled: boolean)
 		if h then
 			h:ChangeState(Enum.HumanoidStateType.GettingUp)
 		end
-		local bv = root() and root():FindFirstChild("ModMenuFlyVelocity")
+		local r = root()
+		local bv = r and r:FindFirstChild("ModMenuFlyVelocity")
 		if bv then bv:Destroy() end
 		return
 	end
-	local bodyVelocity = Instance.new("BodyVelocity")
-	bodyVelocity.Name = "ModMenuFlyVelocity"
-	bodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-	bodyVelocity.Velocity = Vector3.zero
-	local r = root()
-	if r then bodyVelocity.Parent = r end
+	local function makeFlyMover(r: BasePart): BodyVelocity
+		local bv = Instance.new("BodyVelocity")
+		bv.Name = "ModMenuFlyVelocity"
+		bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+		bv.Velocity = Vector3.zero
+		bv.Parent = r
+		return bv
+	end
+
+	local bodyVelocity: BodyVelocity? = nil
+	local r0 = root()
+	if r0 then bodyVelocity = makeFlyMover(r0) end
 
 	local conn = RunService.RenderStepped:Connect(function()
 		local r2 = root()
 		local h2 = hum()
 		if not r2 or not h2 then return end
-		if not bodyVelocity.Parent then bodyVelocity.Parent = r2 end
+		-- The old character (with its BodyVelocity) is destroyed on respawn, so
+		-- recreate the mover on the new root. Re-parenting a destroyed instance
+		-- errors every frame and leaves Fly dead until it is toggled off/on.
+		if not bodyVelocity or not bodyVelocity.Parent then
+			bodyVelocity = makeFlyMover(r2)
+		elseif bodyVelocity.Parent ~= r2 then
+			bodyVelocity.Parent = r2
+		end
 		local cam = S.Workspace.CurrentCamera
+		if not cam then return end
 		local direction = Vector3.zero
 		if UserInputService:IsKeyDown(Enum.KeyCode.W) then direction += cam.CFrame.LookVector end
 		if UserInputService:IsKeyDown(Enum.KeyCode.S) then direction -= cam.CFrame.LookVector end
@@ -139,19 +158,29 @@ ModMenu.Features.Movement.float = function(enabled: boolean)
 		if bp then bp:Destroy() end
 		return
 	end
-	local r = root()
-	if not r then return end
-	local bodyPosition = Instance.new("BodyPosition")
-	bodyPosition.Name = "ModMenuFloat"
-	bodyPosition.MaxForce = Vector3.new(0, 1e5, 0)
-	bodyPosition.Position = r.Position
-	bodyPosition.Parent = r
+	local function makeFloatMover(r: BasePart): BodyPosition
+		local bp = Instance.new("BodyPosition")
+		bp.Name = "ModMenuFloat"
+		bp.MaxForce = Vector3.new(0, 1e5, 0)
+		bp.Position = r.Position
+		bp.Parent = r
+		return bp
+	end
+
+	local bodyPosition: BodyPosition? = nil
+	local r0 = root()
+	if r0 then bodyPosition = makeFloatMover(r0) end
+
 	local conn = RunService.RenderStepped:Connect(function()
 		local r2 = root()
 		if not r2 then return end
-		-- Re-attach after respawn: the old root (and the parented BodyPosition)
-		-- was destroyed, so `bodyPosition.Parent` is nil on the new character.
-		if bodyPosition.Parent ~= r2 then bodyPosition.Parent = r2 end
+		-- The BodyPosition is destroyed with the old character on respawn;
+		-- recreate it on the new root rather than re-parenting a dead instance.
+		if not bodyPosition or not bodyPosition.Parent then
+			bodyPosition = makeFloatMover(r2)
+		elseif bodyPosition.Parent ~= r2 then
+			bodyPosition.Parent = r2
+		end
 		bodyPosition.Position = Vector3.new(r2.Position.X, bodyPosition.Position.Y, r2.Position.Z)
 	end)
 	table.insert(ModMenu.State.getConnections(id), conn)
@@ -194,14 +223,18 @@ ModMenu.Features.Movement.clickTeleport = function(enabled: boolean)
 	ModMenu.State.clearConnections(id)
 	if not enabled then return end
 	local mouse = S.Players.LocalPlayer:GetMouse()
-	local conn = mouse.Button1Down:Connect(function()
+	-- Use UserInputService (not mouse.Button1Down) so a click already consumed by
+	-- the menu/GUI reports gameProcessed and is ignored. Otherwise clicking any
+	-- menu button teleported you to the world behind the window.
+	local conn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 		local r = root()
-		if r then
-			local target = mouse.Hit
-			if target then
-				tpBypass(0.5)
-				r.CFrame = target * CFrame.new(0, 3, 0)
-			end
+		if not r then return end
+		local target = mouse.Hit
+		if target then
+			tpBypass(0.5)
+			r.CFrame = target * CFrame.new(0, 3, 0)
 		end
 	end)
 	table.insert(ModMenu.State.getConnections(id), conn)
@@ -225,18 +258,38 @@ ModMenu.Features.Movement.loadPosition = function()
 	end
 end
 
+-- Push a value back into a slider's UI without marking it as "touched" (so a
+-- respawn/load does not re-fire it). Sliders register their setter in UI.sliderSet.
+local function setSliderValue(id: string, value: number)
+	local setter = ModMenu.UI and ModMenu.UI.sliderSet and ModMenu.UI.sliderSet[id]
+	if setter then
+		pcall(setter, value)
+	end
+end
+
 ModMenu.Features.Movement.resetMovement = function()
+	local walk = ModMenu.State.originalWalkSpeed or 16
+	local jump = ModMenu.State.originalJumpPower or 50
+	local hip = ModMenu.State.originalHipHeight or 0
 	local h = hum()
 	if h then
-		h.WalkSpeed = ModMenu.State.originalWalkSpeed or 16
-		h.JumpPower = ModMenu.State.originalJumpPower or 50
-		h.HipHeight = ModMenu.State.originalHipHeight or 0
+		h.WalkSpeed = walk
+		h.JumpPower = jump
+		if ModMenu.State.originalUseJumpPower ~= nil then
+			h.UseJumpPower = ModMenu.State.originalUseJumpPower
+		end
+		h.HipHeight = hip
 	end
 	-- Forget custom slider values so a respawn does not re-apply them.
 	ModMenu.State.touched["player.walkspeed"] = nil
 	ModMenu.State.touched["player.jumppower"] = nil
 	ModMenu.State.touched["character.hipHeight"] = nil
 	ModMenu.Features.Movement.setGravity(196.2)
+	-- Keep the sliders showing the values we just restored.
+	setSliderValue("player.walkspeed", walk)
+	setSliderValue("player.jumppower", jump)
+	setSliderValue("character.hipHeight", hip)
+	setSliderValue("player.gravity", 196.2)
 end
 
 -- Re-apply the movement-stat sliders the user actually changed after a respawn.
@@ -249,6 +302,7 @@ table.insert(ModMenu.State.getConnections("movement.respawn"), S.Players.LocalPl
 		h.WalkSpeed = ModMenu.State.numbers["player.walkspeed"]
 	end
 	if ModMenu.State.touched["player.jumppower"] then
+		h.UseJumpPower = true
 		h.JumpPower = ModMenu.State.numbers["player.jumppower"]
 	end
 	if ModMenu.State.touched["character.hipHeight"] then

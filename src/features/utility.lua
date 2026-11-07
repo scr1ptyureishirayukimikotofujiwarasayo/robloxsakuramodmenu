@@ -36,9 +36,15 @@ ModMenu.Features.Utility.clickDelete = function(enabled: boolean)
 		return
 	end
 	local mouse = S.Players.LocalPlayer:GetMouse()
-	local conn = mouse.Button1Down:Connect(function()
+	-- UserInputService instead of mouse.Button1Down so a click already consumed
+	-- by the menu/GUI (gameProcessed) does not delete the part behind the window.
+	local conn = S.UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 		local target = mouse.Target
-		if target and target:IsA("BasePart") then
+		-- Never delete parts of a character rig (ours or another player's):
+		-- hiding a player's limb client-side is not what "click delete" means.
+		if target and target:IsA("BasePart") and not isCharacterPart(target) then
 			ModMenu.State.hiddenParts[target] = target.Parent
 			target.Parent = nil
 		end

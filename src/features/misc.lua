@@ -17,18 +17,26 @@ end
 
 ModMenu.State.hiddenGuis = ModMenu.State.hiddenGuis or {}
 
+local function hideGuiChild(child: Instance)
+	if child:IsA("ScreenGui") and child ~= ModMenu.Menu.ScreenGui and child.Enabled then
+		ModMenu.State.hiddenGuis[child] = true
+		child.Enabled = false
+	end
+end
+
 ModMenu.Features.Misc.hideAllGuis = function(enabled: boolean)
 	-- Hides other PlayerGui children (best-effort, reversible). Only GUIs we
 	-- actually disabled are re-enabled, so a GUI that started disabled stays off.
+	local id = "misc.hideGuis"
+	ModMenu.State.clearConnections(id)
 	local pg = S.Players.LocalPlayer:FindFirstChild("PlayerGui")
 	if not pg then return end
 	if enabled then
 		for _, child in pg:GetChildren() do
-			if child:IsA("ScreenGui") and child ~= ModMenu.Menu.ScreenGui and child.Enabled then
-				ModMenu.State.hiddenGuis[child] = true
-				child.Enabled = false
-			end
+			hideGuiChild(child)
 		end
+		-- Keep hiding GUIs added later (new menus, and GUIs recreated on respawn).
+		table.insert(ModMenu.State.getConnections(id), pg.ChildAdded:Connect(hideGuiChild))
 	else
 		for gui in ModMenu.State.hiddenGuis do
 			if gui and gui.Parent then

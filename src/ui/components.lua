@@ -177,6 +177,10 @@ local function slider(parent: Instance, id: string, label: string, min: number, 
 		ModMenu.UI.numberApply[id] = ModMenu.UI.numberApply[id] or {}
 		table.insert(ModMenu.UI.numberApply[id], apply)
 	end
+	-- Let callers update the UI value without marking it "touched" or firing apply.
+	ModMenu.UI.sliderSet[id] = function(v: number)
+		render(v)
+	end
 	return row
 end
 
@@ -229,11 +233,10 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 	local open = false
 	local list = Instance.new("ScrollingFrame")
 	list.Size = UDim2.new(0.6, 0, 0, math.min(#items * 22, 160))
-	list.Position = UDim2.new(0.4, 0, 1, 0)
 	list.BackgroundColor3 = Theme.panel
 	list.BorderSizePixel = 0
 	list.Visible = false
-	list.ZIndex = 20
+	list.ZIndex = 200
 	list.ScrollBarThickness = 6
 	list.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	list.CanvasSize = UDim2.new(0, 0, 0, #items * 22)
@@ -242,7 +245,30 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 	listLayout.Padding = UDim.new(0, 1)
 	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	listLayout.Parent = list
-	list.Parent = row
+	-- Host the options in the ScreenGui, not the scrolling row/panel: a panel's
+	-- ClipsDescendants would otherwise slice a dropdown near the bottom in half.
+	local host = (ModMenu.Menu and ModMenu.Menu.ScreenGui) or row
+	list.Parent = host
+
+	local function placeList()
+		local maxHeight = math.min(#items * 22, 160)
+		local inset = 0
+		local okInset, guiInset = pcall(function()
+			return game:GetService("GuiService"):GetGuiInset()
+		end)
+		if okInset and typeof(guiInset) == "Vector2" then
+			inset = guiInset.Y
+		end
+		list.Size = UDim2.fromOffset(btn.AbsoluteSize.X, maxHeight)
+		list.Position = UDim2.fromOffset(btn.AbsolutePosition.X, btn.AbsolutePosition.Y + btn.AbsoluteSize.Y - inset)
+		list.CanvasSize = UDim2.new(0, 0, 0, #items * 22)
+	end
+
+	local function setOpen(value: boolean)
+		open = value
+		if value then placeList() end
+		list.Visible = value
+	end
 
 	local function buildItems(newItems: { string })
 		items = newItems
@@ -251,7 +277,6 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 				child:Destroy()
 			end
 		end
-		list.Size = UDim2.new(0.6, 0, 0, math.min(#items * 22, 160))
 		list.CanvasSize = UDim2.new(0, 0, 0, #items * 22)
 		for i, item in items do
 			local b = Instance.new("TextButton")
@@ -268,22 +293,30 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 			b.MouseButton1Click:Connect(function()
 				selected = item
 				btn.Text = selected
-				open = false
-				list.Visible = false
+				setOpen(false)
 				ModMenu.State.strings[id] = selected
 				if apply then pcall(apply, selected) end
 				pcall(ModMenu.Config.save)
 			end)
 		end
+		if open then placeList() end
 	end
 	buildItems(items)
 	-- Let callers repopulate the options (e.g. as players join/leave).
 	ModMenu.UI.dropdowns[id] = { refresh = buildItems }
+	-- Let callers update the shown selection without firing apply (config wipe).
+	ModMenu.UI.dropdownSet[id] = function(v: string)
+		selected = v
+		btn.Text = v
+	end
 
 	btn.MouseButton1Click:Connect(function()
-		open = not open
-		list.Visible = open
+		if not open and ModMenu.UI.hideDropdowns then
+			ModMenu.UI.hideDropdowns() -- only one dropdown open at a time
+		end
+		setOpen(not open)
 	end)
+	table.insert(ModMenu.UI.dropdownLists, function() setOpen(false) end)
 
 	ModMenu.State.strings[id] = selected
 	-- Do not run apply() at construction: a dropdown's default item was switching
@@ -298,6 +331,18 @@ ModMenu.UI.toggleSync = {}
 ModMenu.UI.toggleApply = {}
 ModMenu.UI.numberApply = {}
 ModMenu.UI.dropdowns = {}
+ModMenu.UI.dropdownLists = {}
+-- Live widget setters, so callers can push values back into the UI (e.g. Reset
+-- Movement / Wipe Config) without re-triggering the feature callbacks.
+ModMenu.UI.sliderSet = {}
+ModMenu.UI.dropdownSet = {}
+-- Close every open dropdown option list (called when the menu closes or the
+-- tab switches, since the lists now live in the ScreenGui rather than a panel).
+ModMenu.UI.hideDropdowns = function()
+	for _, hide in ModMenu.UI.dropdownLists do
+		pcall(hide)
+	end
+end
 ModMenu.UI.Components = {
 	button = button,
 	toggle = toggle,

@@ -46,11 +46,15 @@ ModMenu.Config = {
 				ModMenu.State.settings.accent = Color3.new(a.r, a.g, a.b)
 			end
 		end
-		-- Feature toggles are only restored when the user opted in. Otherwise the
-		-- widgets fall back to their defaults (off), so a server hop is clean.
-		if ModMenu.State.settings.rememberToggles and type(decoded.toggles) == "table" then
+		-- Feature toggles are only restored when the user opted in. Preferences
+		-- ("settings.") are always restored so the background on/off choice
+		-- survives a reload even with "Remember Toggles" left off.
+		if type(decoded.toggles) == "table" then
 			for k, v in decoded.toggles do
-				if type(v) == "boolean" then
+				if
+					type(v) == "boolean"
+					and (ModMenu.State.settings.rememberToggles or string.sub(k, 1, 9) == "settings.")
+				then
 					ModMenu.State.toggles[k] = v
 				end
 			end
@@ -66,6 +70,15 @@ ModMenu.Config = {
 			for k, v in decoded.touched do
 				if type(k) == "string" and v == true then
 					ModMenu.State.touched[k] = true
+				end
+			end
+		end
+		-- Dropdown selections (view target, player-info target, open key) were
+		-- previously never serialized, so they reset every run.
+		if type(decoded.strings) == "table" then
+			for k, v in decoded.strings do
+				if type(k) == "string" and type(v) == "string" then
+					ModMenu.State.strings[k] = v
 				end
 			end
 		end
@@ -107,6 +120,7 @@ ModMenu.Config = {
 			toggles = ModMenu.State.toggles,
 			numbers = ModMenu.State.numbers,
 			touched = ModMenu.State.touched,
+			strings = ModMenu.State.strings,
 			waypoints = waypoints,
 			savedPosition = ModMenu.State.savedPosition and {
 				x = ModMenu.State.savedPosition.X,
@@ -131,6 +145,11 @@ ModMenu.Config = {
 		table.clear(ModMenu.State.strings)
 		table.clear(ModMenu.State.touched)
 		table.clear(ModMenu.State.waypoints)
+		-- Re-seed the preference toggles so the Settings UI can be re-synced to
+		-- the defaults after a wipe instead of showing stale values.
+		ModMenu.State.toggles["settings.backgroundImage"] = true
+		ModMenu.State.toggles["settings.autoSave"] = true
+		ModMenu.State.toggles["settings.rememberToggles"] = false
 		ModMenu.State.savedPosition = nil
 		ModMenu.State.savedPositionName = nil
 	end,

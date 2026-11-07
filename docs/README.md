@@ -1,4 +1,4 @@
-# Mod Menu 0.4.4
+# Mod Menu 0.4.5
 
 Client-side Roblox mod menu generated from the supplied source files.
 
@@ -77,7 +77,7 @@ Client-side Roblox mod menu generated from the supplied source files.
   off to persist only when you press `Save Now`. `Reset Toggles Now` switches every feature off
   immediately, and `Wipe Saved Config` deletes the file and resets in-memory state.
 - **SakuraVibes999's Reviz Admin:** Utilities > `SakuraVibes999's Reviz Admin` fetches `reviz.lua` from the repo and runs it
-  through `loadstring`, loading the revived SakuraVibes999's Reviz command bar (prefix `;`). Turning it off
+  through `loadstring`, loading the revived Reviz command bar (prefix `;`). Turning it off
   calls the script's `RevizAdminUnload` hook. Press `;` to focus the bar, or `;cmds` for the
   command list. Requires network access and `reviz.lua` at the repo root.
 - **Grac3Haz3Lion's ShatterVast Admin:** Utilities > `Grac3Haz3Lion's ShatterVast Admin` is a separate, optional admin script

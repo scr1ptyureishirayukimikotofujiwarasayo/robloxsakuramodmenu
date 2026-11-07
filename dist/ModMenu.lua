@@ -1,6 +1,6 @@
 --!strict
 -- Mod Menu (client) - generated from local sources
--- Version: 0.4.4
+-- Version: 0.4.5
 
 -- ===== src\core\compat.luau =====
 --!strict
@@ -56,9 +56,44 @@ getconnections = missing("function", getconnections or get_signal_cons)
 
 ModMenu = (typeof(ModMenu) == "table" and ModMenu) or (_G and _G.ModMenu) or {}
 
--- Re-execution: the previous run's feature loops/connections are still live.
--- Tear them down before core/state.luau replaces State.connections, otherwise
--- they become untracked and keep running forever (stacked ESP, fly, etc.).
+-- Re-execution: the previous run's feature loops/connections are still live,
+-- AND every effect it applied (noclip, Lock Workspace, Fullbright, hidden
+-- parts, payload GUIs, ...) is still in force. Tear them down AND revert them
+-- BEFORE core/state.luau replaces State -- otherwise the "original value"
+-- snapshots are lost and the effects become permanent and un-togglable.
+local function isPreference(id: any): boolean
+	return type(id) == "string" and string.sub(id, 1, 9) == "settings."
+end
+
+-- Turning each active toggle off runs its own off-handler, which restores the
+-- originals it snapshotted (see the "Reset Toggles Now" button for the pattern).
+if
+	typeof(ModMenu.UI) == "table"
+	and typeof(ModMenu.UI.toggleApply) == "table"
+	and typeof(ModMenu.State) == "table"
+	and typeof(ModMenu.State.toggles) == "table"
+then
+	for id, callbacks in ModMenu.UI.toggleApply do
+		if not isPreference(id) and ModMenu.State.toggles[id] == true and typeof(callbacks) == "table" then
+			-- Clear the flag first so features that re-derive from the toggle
+			-- table (Fullbright / Remove Fog / Anti-Lag) actually revert.
+			ModMenu.State.toggles[id] = false
+			for _, apply in callbacks do
+				pcall(apply, false)
+			end
+		end
+	end
+end
+
+-- Workspace Visibility is a slider, not a toggle, so revert it explicitly.
+if
+	typeof(ModMenu.Features) == "table"
+	and typeof(ModMenu.Features.Utility) == "table"
+	and typeof(ModMenu.Features.Utility.restoreWorkspaceVisibility) == "function"
+then
+	pcall(ModMenu.Features.Utility.restoreWorkspaceVisibility)
+end
+
 if typeof(ModMenu.State) == "table" and typeof(ModMenu.State.connections) == "table" then
 	for _, bucket in ModMenu.State.connections do
 		for _, conn in bucket do
@@ -153,6 +188,7 @@ ModMenu.State = {
 	reachOriginal = {},
 	originalWalkSpeed = nil :: number?,
 	originalJumpPower = nil :: number?,
+	originalUseJumpPower = nil :: boolean?,
 	originalHipHeight = nil :: number?,
 }
 
@@ -229,11 +265,15 @@ ModMenu.Config = {
 				ModMenu.State.settings.accent = Color3.new(a.r, a.g, a.b)
 			end
 		end
-		-- Feature toggles are only restored when the user opted in. Otherwise the
-		-- widgets fall back to their defaults (off), so a server hop is clean.
-		if ModMenu.State.settings.rememberToggles and type(decoded.toggles) == "table" then
+		-- Feature toggles are only restored when the user opted in. Preferences
+		-- ("settings.") are always restored so the background on/off choice
+		-- survives a reload even with "Remember Toggles" left off.
+		if type(decoded.toggles) == "table" then
 			for k, v in decoded.toggles do
-				if type(v) == "boolean" then
+				if
+					type(v) == "boolean"
+					and (ModMenu.State.settings.rememberToggles or string.sub(k, 1, 9) == "settings.")
+				then
 					ModMenu.State.toggles[k] = v
 				end
 			end
@@ -249,6 +289,15 @@ ModMenu.Config = {
 			for k, v in decoded.touched do
 				if type(k) == "string" and v == true then
 					ModMenu.State.touched[k] = true
+				end
+			end
+		end
+		-- Dropdown selections (view target, player-info target, open key) were
+		-- previously never serialized, so they reset every run.
+		if type(decoded.strings) == "table" then
+			for k, v in decoded.strings do
+				if type(k) == "string" and type(v) == "string" then
+					ModMenu.State.strings[k] = v
 				end
 			end
 		end
@@ -290,6 +339,7 @@ ModMenu.Config = {
 			toggles = ModMenu.State.toggles,
 			numbers = ModMenu.State.numbers,
 			touched = ModMenu.State.touched,
+			strings = ModMenu.State.strings,
 			waypoints = waypoints,
 			savedPosition = ModMenu.State.savedPosition and {
 				x = ModMenu.State.savedPosition.X,
@@ -314,6 +364,11 @@ ModMenu.Config = {
 		table.clear(ModMenu.State.strings)
 		table.clear(ModMenu.State.touched)
 		table.clear(ModMenu.State.waypoints)
+		-- Re-seed the preference toggles so the Settings UI can be re-synced to
+		-- the defaults after a wipe instead of showing stale values.
+		ModMenu.State.toggles["settings.backgroundImage"] = true
+		ModMenu.State.toggles["settings.autoSave"] = true
+		ModMenu.State.toggles["settings.rememberToggles"] = false
 		ModMenu.State.savedPosition = nil
 		ModMenu.State.savedPositionName = nil
 	end,
@@ -568,6 +623,10 @@ local function slider(parent: Instance, id: string, label: string, min: number, 
 		ModMenu.UI.numberApply[id] = ModMenu.UI.numberApply[id] or {}
 		table.insert(ModMenu.UI.numberApply[id], apply)
 	end
+	-- Let callers update the UI value without marking it "touched" or firing apply.
+	ModMenu.UI.sliderSet[id] = function(v: number)
+		render(v)
+	end
 	return row
 end
 
@@ -620,11 +679,10 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 	local open = false
 	local list = Instance.new("ScrollingFrame")
 	list.Size = UDim2.new(0.6, 0, 0, math.min(#items * 22, 160))
-	list.Position = UDim2.new(0.4, 0, 1, 0)
 	list.BackgroundColor3 = Theme.panel
 	list.BorderSizePixel = 0
 	list.Visible = false
-	list.ZIndex = 20
+	list.ZIndex = 200
 	list.ScrollBarThickness = 6
 	list.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	list.CanvasSize = UDim2.new(0, 0, 0, #items * 22)
@@ -633,7 +691,30 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 	listLayout.Padding = UDim.new(0, 1)
 	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	listLayout.Parent = list
-	list.Parent = row
+	-- Host the options in the ScreenGui, not the scrolling row/panel: a panel's
+	-- ClipsDescendants would otherwise slice a dropdown near the bottom in half.
+	local host = (ModMenu.Menu and ModMenu.Menu.ScreenGui) or row
+	list.Parent = host
+
+	local function placeList()
+		local maxHeight = math.min(#items * 22, 160)
+		local inset = 0
+		local okInset, guiInset = pcall(function()
+			return game:GetService("GuiService"):GetGuiInset()
+		end)
+		if okInset and typeof(guiInset) == "Vector2" then
+			inset = guiInset.Y
+		end
+		list.Size = UDim2.fromOffset(btn.AbsoluteSize.X, maxHeight)
+		list.Position = UDim2.fromOffset(btn.AbsolutePosition.X, btn.AbsolutePosition.Y + btn.AbsoluteSize.Y - inset)
+		list.CanvasSize = UDim2.new(0, 0, 0, #items * 22)
+	end
+
+	local function setOpen(value: boolean)
+		open = value
+		if value then placeList() end
+		list.Visible = value
+	end
 
 	local function buildItems(newItems: { string })
 		items = newItems
@@ -642,7 +723,6 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 				child:Destroy()
 			end
 		end
-		list.Size = UDim2.new(0.6, 0, 0, math.min(#items * 22, 160))
 		list.CanvasSize = UDim2.new(0, 0, 0, #items * 22)
 		for i, item in items do
 			local b = Instance.new("TextButton")
@@ -659,22 +739,30 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 			b.MouseButton1Click:Connect(function()
 				selected = item
 				btn.Text = selected
-				open = false
-				list.Visible = false
+				setOpen(false)
 				ModMenu.State.strings[id] = selected
 				if apply then pcall(apply, selected) end
 				pcall(ModMenu.Config.save)
 			end)
 		end
+		if open then placeList() end
 	end
 	buildItems(items)
 	-- Let callers repopulate the options (e.g. as players join/leave).
 	ModMenu.UI.dropdowns[id] = { refresh = buildItems }
+	-- Let callers update the shown selection without firing apply (config wipe).
+	ModMenu.UI.dropdownSet[id] = function(v: string)
+		selected = v
+		btn.Text = v
+	end
 
 	btn.MouseButton1Click:Connect(function()
-		open = not open
-		list.Visible = open
+		if not open and ModMenu.UI.hideDropdowns then
+			ModMenu.UI.hideDropdowns() -- only one dropdown open at a time
+		end
+		setOpen(not open)
 	end)
+	table.insert(ModMenu.UI.dropdownLists, function() setOpen(false) end)
 
 	ModMenu.State.strings[id] = selected
 	-- Do not run apply() at construction: a dropdown's default item was switching
@@ -689,6 +777,18 @@ ModMenu.UI.toggleSync = {}
 ModMenu.UI.toggleApply = {}
 ModMenu.UI.numberApply = {}
 ModMenu.UI.dropdowns = {}
+ModMenu.UI.dropdownLists = {}
+-- Live widget setters, so callers can push values back into the UI (e.g. Reset
+-- Movement / Wipe Config) without re-triggering the feature callbacks.
+ModMenu.UI.sliderSet = {}
+ModMenu.UI.dropdownSet = {}
+-- Close every open dropdown option list (called when the menu closes or the
+-- tab switches, since the lists now live in the ScreenGui rather than a panel).
+ModMenu.UI.hideDropdowns = function()
+	for _, hide in ModMenu.UI.dropdownLists do
+		pcall(hide)
+	end
+end
 ModMenu.UI.Components = {
 	button = button,
 	toggle = toggle,
@@ -885,6 +985,9 @@ root.BackgroundTransparency = 0
 root.BorderSizePixel = 0
 root.ZIndex = 0
 root.ClipsDescendants = true -- keeps the photo inside the rounded corners
+-- Consume mouse input over the window so "Click Teleport"/"Click Delete"
+-- (which filter on gameProcessed) ignore clicks on empty menu space too.
+root.Active = true
 Theme.corner(root, 10)
 root.Visible = false
 root.Parent = screen
@@ -1079,6 +1182,9 @@ local function makePanel(id: string)
 end
 
 local function switchTab(id: string)
+	if ModMenu.UI and ModMenu.UI.hideDropdowns then
+		ModMenu.UI.hideDropdowns()
+	end
 	for _, cat in categories do
 		local panel = ModMenu.Menu.Panels[cat.id]
 		if panel then panel.Visible = (cat.id == id) end
@@ -1147,6 +1253,9 @@ local function setOpen(value: boolean)
 	ModMenu.Menu.Open = value
 	root.Visible = value
 	floating.Visible = not value
+	if not value and ModMenu.UI and ModMenu.UI.hideDropdowns then
+		ModMenu.UI.hideDropdowns()
+	end
 end
 ModMenu.Menu.setOpen = setOpen
 
@@ -1216,7 +1325,11 @@ ModMenu.Features.Movement.setJumpPower = function(value: number)
 	if h then
 		if ModMenu.State.originalJumpPower == nil then
 			ModMenu.State.originalJumpPower = h.JumpPower
+			ModMenu.State.originalUseJumpPower = h.UseJumpPower
 		end
+		-- Games on the newer JumpHeight mode ignore JumpPower entirely; force
+		-- power mode on so the slider actually changes jump height.
+		h.UseJumpPower = true
 		h.JumpPower = value
 	end
 end
@@ -1233,23 +1346,38 @@ ModMenu.Features.Movement.fly = function(enabled: boolean)
 		if h then
 			h:ChangeState(Enum.HumanoidStateType.GettingUp)
 		end
-		local bv = root() and root():FindFirstChild("ModMenuFlyVelocity")
+		local r = root()
+		local bv = r and r:FindFirstChild("ModMenuFlyVelocity")
 		if bv then bv:Destroy() end
 		return
 	end
-	local bodyVelocity = Instance.new("BodyVelocity")
-	bodyVelocity.Name = "ModMenuFlyVelocity"
-	bodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-	bodyVelocity.Velocity = Vector3.zero
-	local r = root()
-	if r then bodyVelocity.Parent = r end
+	local function makeFlyMover(r: BasePart): BodyVelocity
+		local bv = Instance.new("BodyVelocity")
+		bv.Name = "ModMenuFlyVelocity"
+		bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+		bv.Velocity = Vector3.zero
+		bv.Parent = r
+		return bv
+	end
+
+	local bodyVelocity: BodyVelocity? = nil
+	local r0 = root()
+	if r0 then bodyVelocity = makeFlyMover(r0) end
 
 	local conn = RunService.RenderStepped:Connect(function()
 		local r2 = root()
 		local h2 = hum()
 		if not r2 or not h2 then return end
-		if not bodyVelocity.Parent then bodyVelocity.Parent = r2 end
+		-- The old character (with its BodyVelocity) is destroyed on respawn, so
+		-- recreate the mover on the new root. Re-parenting a destroyed instance
+		-- errors every frame and leaves Fly dead until it is toggled off/on.
+		if not bodyVelocity or not bodyVelocity.Parent then
+			bodyVelocity = makeFlyMover(r2)
+		elseif bodyVelocity.Parent ~= r2 then
+			bodyVelocity.Parent = r2
+		end
 		local cam = S.Workspace.CurrentCamera
+		if not cam then return end
 		local direction = Vector3.zero
 		if UserInputService:IsKeyDown(Enum.KeyCode.W) then direction += cam.CFrame.LookVector end
 		if UserInputService:IsKeyDown(Enum.KeyCode.S) then direction -= cam.CFrame.LookVector end
@@ -1309,19 +1437,29 @@ ModMenu.Features.Movement.float = function(enabled: boolean)
 		if bp then bp:Destroy() end
 		return
 	end
-	local r = root()
-	if not r then return end
-	local bodyPosition = Instance.new("BodyPosition")
-	bodyPosition.Name = "ModMenuFloat"
-	bodyPosition.MaxForce = Vector3.new(0, 1e5, 0)
-	bodyPosition.Position = r.Position
-	bodyPosition.Parent = r
+	local function makeFloatMover(r: BasePart): BodyPosition
+		local bp = Instance.new("BodyPosition")
+		bp.Name = "ModMenuFloat"
+		bp.MaxForce = Vector3.new(0, 1e5, 0)
+		bp.Position = r.Position
+		bp.Parent = r
+		return bp
+	end
+
+	local bodyPosition: BodyPosition? = nil
+	local r0 = root()
+	if r0 then bodyPosition = makeFloatMover(r0) end
+
 	local conn = RunService.RenderStepped:Connect(function()
 		local r2 = root()
 		if not r2 then return end
-		-- Re-attach after respawn: the old root (and the parented BodyPosition)
-		-- was destroyed, so `bodyPosition.Parent` is nil on the new character.
-		if bodyPosition.Parent ~= r2 then bodyPosition.Parent = r2 end
+		-- The BodyPosition is destroyed with the old character on respawn;
+		-- recreate it on the new root rather than re-parenting a dead instance.
+		if not bodyPosition or not bodyPosition.Parent then
+			bodyPosition = makeFloatMover(r2)
+		elseif bodyPosition.Parent ~= r2 then
+			bodyPosition.Parent = r2
+		end
 		bodyPosition.Position = Vector3.new(r2.Position.X, bodyPosition.Position.Y, r2.Position.Z)
 	end)
 	table.insert(ModMenu.State.getConnections(id), conn)
@@ -1364,14 +1502,18 @@ ModMenu.Features.Movement.clickTeleport = function(enabled: boolean)
 	ModMenu.State.clearConnections(id)
 	if not enabled then return end
 	local mouse = S.Players.LocalPlayer:GetMouse()
-	local conn = mouse.Button1Down:Connect(function()
+	-- Use UserInputService (not mouse.Button1Down) so a click already consumed by
+	-- the menu/GUI reports gameProcessed and is ignored. Otherwise clicking any
+	-- menu button teleported you to the world behind the window.
+	local conn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 		local r = root()
-		if r then
-			local target = mouse.Hit
-			if target then
-				tpBypass(0.5)
-				r.CFrame = target * CFrame.new(0, 3, 0)
-			end
+		if not r then return end
+		local target = mouse.Hit
+		if target then
+			tpBypass(0.5)
+			r.CFrame = target * CFrame.new(0, 3, 0)
 		end
 	end)
 	table.insert(ModMenu.State.getConnections(id), conn)
@@ -1395,18 +1537,38 @@ ModMenu.Features.Movement.loadPosition = function()
 	end
 end
 
+-- Push a value back into a slider's UI without marking it as "touched" (so a
+-- respawn/load does not re-fire it). Sliders register their setter in UI.sliderSet.
+local function setSliderValue(id: string, value: number)
+	local setter = ModMenu.UI and ModMenu.UI.sliderSet and ModMenu.UI.sliderSet[id]
+	if setter then
+		pcall(setter, value)
+	end
+end
+
 ModMenu.Features.Movement.resetMovement = function()
+	local walk = ModMenu.State.originalWalkSpeed or 16
+	local jump = ModMenu.State.originalJumpPower or 50
+	local hip = ModMenu.State.originalHipHeight or 0
 	local h = hum()
 	if h then
-		h.WalkSpeed = ModMenu.State.originalWalkSpeed or 16
-		h.JumpPower = ModMenu.State.originalJumpPower or 50
-		h.HipHeight = ModMenu.State.originalHipHeight or 0
+		h.WalkSpeed = walk
+		h.JumpPower = jump
+		if ModMenu.State.originalUseJumpPower ~= nil then
+			h.UseJumpPower = ModMenu.State.originalUseJumpPower
+		end
+		h.HipHeight = hip
 	end
 	-- Forget custom slider values so a respawn does not re-apply them.
 	ModMenu.State.touched["player.walkspeed"] = nil
 	ModMenu.State.touched["player.jumppower"] = nil
 	ModMenu.State.touched["character.hipHeight"] = nil
 	ModMenu.Features.Movement.setGravity(196.2)
+	-- Keep the sliders showing the values we just restored.
+	setSliderValue("player.walkspeed", walk)
+	setSliderValue("player.jumppower", jump)
+	setSliderValue("character.hipHeight", hip)
+	setSliderValue("player.gravity", 196.2)
 end
 
 -- Re-apply the movement-stat sliders the user actually changed after a respawn.
@@ -1419,6 +1581,7 @@ table.insert(ModMenu.State.getConnections("movement.respawn"), S.Players.LocalPl
 		h.WalkSpeed = ModMenu.State.numbers["player.walkspeed"]
 	end
 	if ModMenu.State.touched["player.jumppower"] then
+		h.UseJumpPower = true
 		h.JumpPower = ModMenu.State.numbers["player.jumppower"]
 	end
 	if ModMenu.State.touched["character.hipHeight"] then
@@ -1453,13 +1616,15 @@ end
 
 -- Fullbright and Remove Fog both touch fog, so recompute the whole Lighting
 -- state from the current toggles rather than each one blindly overwriting.
+-- Anti-Lag (world.luau) also writes into this state so the three do not fight.
 local function refreshLighting()
 	local o = lightingOriginal()
 	local fullbright = ModMenu.State.toggles["visual.fullbright"] == true
 	local removeFog = ModMenu.State.toggles["visual.removeFog"] == true
+	local antiLag = ModMenu.State.toggles["world.antiLag"] == true
 
 	Lighting.Brightness = if fullbright then 2 else o.Brightness
-	Lighting.GlobalShadows = if fullbright then false else o.GlobalShadows
+	Lighting.GlobalShadows = if (fullbright or antiLag) then false else o.GlobalShadows
 
 	if fullbright then
 		Lighting.ClockTime = 14
@@ -1469,7 +1634,7 @@ local function refreshLighting()
 		Lighting.ClockTime = o.ClockTime
 	end
 
-	if fullbright or removeFog then
+	if fullbright or removeFog or antiLag then
 		Lighting.FogEnd = 1e5
 		Lighting.FogStart = 0
 	else
@@ -1477,6 +1642,11 @@ local function refreshLighting()
 		Lighting.FogStart = o.FogStart
 	end
 end
+
+-- Shared so the World tab's Anti-Lag can re-derive the same state instead of
+-- clobbering it, and so restoring snapshots the map's real values. Re-applying
+-- the lighting on load/respawn is not needed (toggles drive it).
+ModMenu.Features.Visual.refreshLighting = refreshLighting
 
 ModMenu.Features.Visual.fullbright = function(_enabled: boolean)
 	refreshLighting()
@@ -1549,9 +1719,9 @@ ModMenu.Features.Character = {}
 
 ModMenu.State.originalPlatformStand = ModMenu.State.originalPlatformStand or {}
 ModMenu.State.invisibleOriginal = ModMenu.State.invisibleOriginal or {}
-ModMenu.State.hiddenLimbOwner = ModMenu.State.hiddenLimbOwner or {}
 ModMenu.State.hiddenLimbState = ModMenu.State.hiddenLimbState or {}
 ModMenu.State.blockedHatMeshes = ModMenu.State.blockedHatMeshes or {}
+ModMenu.State.blockedHatParts = ModMenu.State.blockedHatParts or {}
 
 local function char()
 	return S.Players.LocalPlayer.Character
@@ -1592,50 +1762,84 @@ ModMenu.Features.Character.view = function(tagetName: string?)
 	end
 end
 
+-- Cover both rigs: R6 uses "Left Arm"/"Left Leg", R15 uses the segmented
+-- Upper/Lower/Hand (and Foot) names. FindFirstChild picks whichever exists, so
+-- listing both is safe and makes the toggles work on default (R15) avatars.
+local R6 = {
+	arms = { "Left Arm", "Right Arm" },
+	legs = { "Left Leg", "Right Leg" },
+}
+local R15 = {
+	arms = { "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand" },
+	legs = { "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot" },
+}
+local function concat(...: { string }): { string }
+	local out = {}
+	for _, list in { ... } do
+		for _, name in list do
+			table.insert(out, name)
+		end
+	end
+	return out
+end
 local limbNames = {
-	all = {"Left Arm", "Right Arm", "Left Leg", "Right Leg"},
-	arms = {"Left Arm", "Right Arm"},
-	legs = {"Left Leg", "Right Leg"},
+	all = concat(R6.arms, R6.legs, R15.arms, R15.legs),
+	arms = concat(R6.arms, R15.arms),
+	legs = concat(R6.legs, R15.legs),
 }
 
 -- Hide limbs with Transparency/CanCollide rather than unparenting them: removing
 -- a limb from the model breaks its Motor6D and can leave the character tumbling.
-ModMenu.Features.Character.setLimbs = function(mode: string?, enabled: boolean)
+-- Originals are stored per-part and the desired visibility is recomputed from
+-- the toggles each time, so "No Limbs" and "No Arms"/"No Legs" combine correctly
+-- instead of one toggle's off-state restoring the other's limbs.
+local function applyLimbGroup(names: { string }, hide: boolean)
 	local c = char()
 	if not c then return end
-	local key = mode or "all"
-	local selected = limbNames[key] or limbNames.all
-	for _, limbName in selected do
+	for _, limbName in names do
 		local limb = c:FindFirstChild(limbName)
 		if not limb or not limb:IsA("BasePart") then continue end
-		local owner = ModMenu.State.hiddenLimbOwner[limb]
-		if enabled then
-			if not owner then
+		if hide then
+			if ModMenu.State.hiddenLimbState[limb] == nil then
 				ModMenu.State.hiddenLimbState[limb] = {
 					transparency = limb.Transparency,
 					collide = limb.CanCollide,
 				}
-				limb.Transparency = 1
-				limb.CanCollide = false
-				ModMenu.State.hiddenLimbOwner[limb] = key
 			end
+			limb.Transparency = 1
+			limb.CanCollide = false
 		else
-			if owner == key then
-				local saved = ModMenu.State.hiddenLimbState[limb]
-				if saved then
-					limb.Transparency = saved.transparency
-					limb.CanCollide = saved.collide
-				end
-				ModMenu.State.hiddenLimbOwner[limb] = nil
+			local saved = ModMenu.State.hiddenLimbState[limb]
+			if saved then
+				limb.Transparency = saved.transparency
+				limb.CanCollide = saved.collide
 				ModMenu.State.hiddenLimbState[limb] = nil
 			end
 		end
 	end
 end
 
+local function refreshLimbs()
+	local noLimbs = ModMenu.State.toggles["character.nolimbs"] == true
+	local noArms = noLimbs or ModMenu.State.toggles["character.noarms"] == true
+	local noLegs = noLimbs or ModMenu.State.toggles["character.nolegs"] == true
+	applyLimbGroup(limbNames.all, noLimbs)
+	applyLimbGroup(limbNames.arms, noArms)
+	applyLimbGroup(limbNames.legs, noLegs)
+end
+
+-- Public entry point used by the three limb toggles. Recomputes every group from
+-- the current toggle state instead of honouring a single per-limb owner.
+ModMenu.Features.Character.setLimbs = function(_mode: string?, _enabled: boolean)
+	refreshLimbs()
+end
+
+ModMenu.Features.Character.refreshLimbs = refreshLimbs
+
 ModMenu.Features.Character.invisible = function(enabled: boolean)
 	local c = char()
 	if not c then return end
+	local h = c:FindFirstChildOfClass("Humanoid")
 	if enabled then
 		for _, part in c:GetDescendants() do
 			if part:IsA("BasePart") or part:IsA("Decal") then
@@ -1645,6 +1849,18 @@ ModMenu.Features.Character.invisible = function(enabled: boolean)
 				part.Transparency = 1
 			end
 		end
+		-- Also hide the engine nametag/health bar, otherwise an "invisible" player
+		-- still shows a floating name above everyone else's screen.
+		if h then
+			if ModMenu.State.invisibleDisplay == nil then
+				ModMenu.State.invisibleDisplay = {
+					name = h.NameDisplayDistance,
+					health = h.HealthDisplayDistance,
+				}
+			end
+			h.NameDisplayDistance = 0
+			h.HealthDisplayDistance = 0
+		end
 	else
 		for part, value in ModMenu.State.invisibleOriginal do
 			if part and part.Parent then
@@ -1652,6 +1868,11 @@ ModMenu.Features.Character.invisible = function(enabled: boolean)
 			end
 		end
 		table.clear(ModMenu.State.invisibleOriginal)
+		if h and ModMenu.State.invisibleDisplay then
+			h.NameDisplayDistance = ModMenu.State.invisibleDisplay.name
+			h.HealthDisplayDistance = ModMenu.State.invisibleDisplay.health
+		end
+		ModMenu.State.invisibleDisplay = nil
 	end
 end
 
@@ -1667,6 +1888,13 @@ ModMenu.Features.Character.blockHats = function(enabled: boolean)
 							ModMenu.State.blockedHatMeshes[descendant] = descendant.Parent
 						end
 						descendant.Parent = nil
+					elseif descendant:IsA("BasePart") or descendant:IsA("Decal") then
+						-- Modern hats use a MeshPart handle with no SpecialMesh, so
+						-- hide the part itself too or those hats stay visible.
+						if ModMenu.State.blockedHatParts[descendant] == nil then
+							ModMenu.State.blockedHatParts[descendant] = descendant.Transparency
+						end
+						descendant.Transparency = 1
 					end
 				end
 			end
@@ -1678,6 +1906,12 @@ ModMenu.Features.Character.blockHats = function(enabled: boolean)
 			end
 		end
 		table.clear(ModMenu.State.blockedHatMeshes)
+		for part, transparency in ModMenu.State.blockedHatParts do
+			if part and part.Parent then
+				part.Transparency = transparency
+			end
+		end
+		table.clear(ModMenu.State.blockedHatParts)
 	end
 end
 
@@ -1689,9 +1923,10 @@ table.insert(ModMenu.State.getConnections("character.respawn"), S.Players.LocalP
 
 	-- Drop state keyed on the previous (destroyed) character to avoid leaks.
 	table.clear(ModMenu.State.invisibleOriginal)
-	table.clear(ModMenu.State.hiddenLimbOwner)
 	table.clear(ModMenu.State.hiddenLimbState)
 	table.clear(ModMenu.State.blockedHatMeshes)
+	table.clear(ModMenu.State.blockedHatParts)
+	ModMenu.State.invisibleDisplay = nil
 
 	if ModMenu.State.toggles["character.platformStand"] then
 		h.PlatformStand = true
@@ -1702,15 +1937,8 @@ table.insert(ModMenu.State.getConnections("character.respawn"), S.Players.LocalP
 		if ModMenu.State.toggles["character.invisible"] then
 			ModMenu.Features.Character.invisible(true)
 		end
-		if ModMenu.State.toggles["character.nolimbs"] then
-			ModMenu.Features.Character.setLimbs("all", true)
-		end
-		if ModMenu.State.toggles["character.noarms"] then
-			ModMenu.Features.Character.setLimbs("arms", true)
-		end
-		if ModMenu.State.toggles["character.nolegs"] then
-			ModMenu.Features.Character.setLimbs("legs", true)
-		end
+		-- Recompute all three limb groups from the toggles in a single pass.
+		refreshLimbs()
 		if ModMenu.State.toggles["character.blockHats"] then
 			ModMenu.Features.Character.blockHats(true)
 		end
@@ -1756,9 +1984,15 @@ ModMenu.Features.Utility.clickDelete = function(enabled: boolean)
 		return
 	end
 	local mouse = S.Players.LocalPlayer:GetMouse()
-	local conn = mouse.Button1Down:Connect(function()
+	-- UserInputService instead of mouse.Button1Down so a click already consumed
+	-- by the menu/GUI (gameProcessed) does not delete the part behind the window.
+	local conn = S.UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 		local target = mouse.Target
-		if target and target:IsA("BasePart") then
+		-- Never delete parts of a character rig (ours or another player's):
+		-- hiding a player's limb client-side is not what "click delete" means.
+		if target and target:IsA("BasePart") and not isCharacterPart(target) then
 			ModMenu.State.hiddenParts[target] = target.Parent
 			target.Parent = nil
 		end
@@ -1925,8 +2159,12 @@ ModMenu.Features.Teleport.copyPosition = function()
 	if r then
 		local pos = r.Position
 		local text = string.format("%.2f, %.2f, %.2f", pos.X, pos.Y, pos.Z)
-		if everyClipboard then everyClipboard(text) end
-		ModMenu.Notify("Position", "Copied: " .. text)
+		if everyClipboard then
+			everyClipboard(text)
+			ModMenu.Notify("Position", "Copied: " .. text)
+		else
+			ModMenu.Notify("Position", "Clipboard unavailable. Position: " .. text)
+		end
 	end
 end
 
@@ -1936,7 +2174,8 @@ local rejoinQueued = false
 ModMenu.Features.Teleport.rejoin = function()
 	-- Teleports create a fresh DataModel: queue the loader so the menu
 	-- rebuilds itself in the new session (needs executor teleport-queue support).
-	local queue = queue_on_teleport or (syn and syn.queue_on_teleport)
+	-- util compat resolves queue_on_teleport under several executor names.
+	local queue = queueteleport or queue_on_teleport or (syn and syn.queue_on_teleport)
 	if queue and not rejoinQueued then
 		pcall(queue, REJOIN_LOADSTRING)
 		rejoinQueued = true
@@ -1955,20 +2194,29 @@ end
 -- ===== src\features\world.luau =====
 --!strict
 -- features/world.luau
-local S = ModMenu.Services
-local Lighting = S.Lighting
 
 ModMenu.Features = ModMenu.Features or {}
 ModMenu.Features.World = {}
 
+-- Anti-Lag feeds into the shared Lighting state (features/visual.luau
+-- refreshLighting) instead of writing GlobalShadows/FogEnd itself. That way it
+-- no longer clobbers -- or gets clobbered by -- Fullbright / Remove Fog, and
+-- switching it off restores the map's original fog instead of leaving 1e4.
 ModMenu.Features.World.antiLag = function(enabled: boolean)
-	if enabled then
-		pcall(function() Lighting.GlobalShadows = false end)
-		pcall(function() Lighting.FogEnd = 1e4 end)
-		pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
-	else
-		pcall(function() Lighting.GlobalShadows = true end)
-		pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic end)
+	local Visual = ModMenu.Features.Visual
+	pcall(function()
+		if enabled then
+			if ModMenu.State.antiLagQuality == nil then
+				ModMenu.State.antiLagQuality = settings().Rendering.QualityLevel
+			end
+			settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+		else
+			settings().Rendering.QualityLevel = ModMenu.State.antiLagQuality or Enum.QualityLevel.Automatic
+			ModMenu.State.antiLagQuality = nil
+		end
+	end)
+	if Visual and Visual.refreshLighting then
+		Visual.refreshLighting()
 	end
 end
 
@@ -2235,18 +2483,26 @@ end
 
 ModMenu.State.hiddenGuis = ModMenu.State.hiddenGuis or {}
 
+local function hideGuiChild(child: Instance)
+	if child:IsA("ScreenGui") and child ~= ModMenu.Menu.ScreenGui and child.Enabled then
+		ModMenu.State.hiddenGuis[child] = true
+		child.Enabled = false
+	end
+end
+
 ModMenu.Features.Misc.hideAllGuis = function(enabled: boolean)
 	-- Hides other PlayerGui children (best-effort, reversible). Only GUIs we
 	-- actually disabled are re-enabled, so a GUI that started disabled stays off.
+	local id = "misc.hideGuis"
+	ModMenu.State.clearConnections(id)
 	local pg = S.Players.LocalPlayer:FindFirstChild("PlayerGui")
 	if not pg then return end
 	if enabled then
 		for _, child in pg:GetChildren() do
-			if child:IsA("ScreenGui") and child ~= ModMenu.Menu.ScreenGui and child.Enabled then
-				ModMenu.State.hiddenGuis[child] = true
-				child.Enabled = false
-			end
+			hideGuiChild(child)
 		end
+		-- Keep hiding GUIs added later (new menus, and GUIs recreated on respawn).
+		table.insert(ModMenu.State.getConnections(id), pg.ChildAdded:Connect(hideGuiChild))
 	else
 		for gui in ModMenu.State.hiddenGuis do
 			if gui and gui.Parent then
@@ -2272,6 +2528,7 @@ ModMenu.Features = ModMenu.Features or {}
 ModMenu.Features.Dex = {}
 
 local dexLoaded = false
+local dexGen = 0
 
 local function candidateParents(): { Instance }
 	local parents: { Instance } = {}
@@ -2313,6 +2570,7 @@ ModMenu.Features.Dex.isOpen = function(): boolean
 end
 
 ModMenu.Features.Dex.close = function()
+	dexGen += 1
 	for _, gui in findDexGuis() do
 		pcall(function() gui:Destroy() end)
 	end
@@ -2323,7 +2581,8 @@ ModMenu.Features.Dex.open = function()
 	if dexLoaded and ModMenu.Features.Dex.isOpen() then
 		return -- already running; avoid stacking a second copy
 	end
-	ModMenu.Features.Dex.close()
+	ModMenu.Features.Dex.close() -- also bumps dexGen
+	local gen = dexGen
 	task.spawn(function()
 		local ok, err = pcall(function()
 			local source = game:HttpGet(DEX_URL, true)
@@ -2333,6 +2592,16 @@ ModMenu.Features.Dex.open = function()
 			end
 			chunk()
 		end)
+		if gen ~= dexGen then
+			-- Toggled off while the payload was still loading: undo it now.
+			if ok then
+				for _, gui in findDexGuis() do
+					pcall(function() gui:Destroy() end)
+				end
+			end
+			dexLoaded = false
+			return
+		end
 		if ok then
 			dexLoaded = true
 			ModMenu.Notify("Dex Explorer", "Opened.")
@@ -2370,6 +2639,7 @@ ModMenu.Features = ModMenu.Features or {}
 ModMenu.Features.Reviz = {}
 
 local revizLoaded = false
+local revizGen = 0
 
 local function candidateParents(): { Instance }
 	local parents: { Instance } = {}
@@ -2431,6 +2701,7 @@ local function unloadExisting()
 	for _, gui in findGuis() do
 		pcall(function() gui:Destroy() end)
 	end
+	revizGen += 1
 	revizLoaded = false
 end
 
@@ -2443,7 +2714,8 @@ ModMenu.Features.Reviz.open = function()
 	if revizLoaded and ModMenu.Features.Reviz.isOpen() then
 		return -- already running; avoid stacking a second copy
 	end
-	unloadExisting()
+	unloadExisting() -- also bumps revizGen
+	local gen = revizGen
 	task.spawn(function()
 		local ok, err = pcall(function()
 			local source = game:HttpGet(REVIZ_URL, true)
@@ -2453,6 +2725,16 @@ ModMenu.Features.Reviz.open = function()
 			end
 			chunk()
 		end)
+		if gen ~= revizGen then
+			-- Toggled off while the payload was still loading: undo it now.
+			if ok then
+				for _, gui in findGuis() do
+					pcall(function() gui:Destroy() end)
+				end
+			end
+			revizLoaded = false
+			return
+		end
 		if ok then
 			revizLoaded = true
 			-- A finished chunk with no GUI means it ran but could not parent its
@@ -2501,6 +2783,7 @@ ModMenu.Features = ModMenu.Features or {}
 ModMenu.Features.Shattervast = {}
 
 local shattervastLoaded = false
+local shattervastGen = 0
 
 local function candidateParents(): { Instance }
 	local parents: { Instance } = {}
@@ -2558,6 +2841,7 @@ local function unloadExisting()
 	for _, gui in findGuis() do
 		pcall(function() gui:Destroy() end)
 	end
+	shattervastGen += 1
 	shattervastLoaded = false
 end
 
@@ -2570,7 +2854,8 @@ ModMenu.Features.Shattervast.open = function()
 	if shattervastLoaded and ModMenu.Features.Shattervast.isOpen() then
 		return -- already running; avoid stacking a second copy
 	end
-	unloadExisting()
+	unloadExisting() -- also bumps shattervastGen
+	local gen = shattervastGen
 	task.spawn(function()
 		local ok, err = pcall(function()
 			local source = game:HttpGet(SHATTERVAST_URL, true)
@@ -2580,6 +2865,16 @@ ModMenu.Features.Shattervast.open = function()
 			end
 			chunk()
 		end)
+		if gen ~= shattervastGen then
+			-- Toggled off while the payload was still loading: undo it now.
+			if ok then
+				for _, gui in findGuis() do
+					pcall(function() gui:Destroy() end)
+				end
+			end
+			shattervastLoaded = false
+			return
+		end
 		if ok then
 			shattervastLoaded = true
 			ModMenu.Notify("Grac3Haz3Lion's ShatterVast Admin", "Loaded. Press ; for the command bar.")
@@ -2809,7 +3104,22 @@ do
 	end)
 	C.button(p, "Wipe Saved Config", function()
 		pcall(ModMenu.Config.wipe)
-		ModMenu.Notify("Settings", "Config wiped. Reload to reset the UI.")
+		-- Config.wipe() reseeded the defaults in memory; bring the Settings UI
+		-- (preference toggles, open-key dropdown, background) back in sync.
+		for id, syncers in ModMenu.UI.toggleSync do
+			if isPreference(id) then
+				local v = ModMenu.State.toggles[id] == true
+				for _, sync in syncers do
+					pcall(sync, v)
+				end
+			end
+		end
+		local keyset = ModMenu.UI.dropdownSet["settings.openKey"]
+		if keyset then
+			pcall(keyset, ModMenu.State.settings.openKey.Name)
+		end
+		ModMenu.Menu.applyBackground()
+		ModMenu.Notify("Settings", "Config wiped and reset.")
 	end)
 end
 

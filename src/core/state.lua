@@ -28,6 +28,7 @@ ModMenu.State = {
 	reachOriginal = {},
 	originalWalkSpeed = nil :: number?,
 	originalJumpPower = nil :: number?,
+	originalUseJumpPower = nil :: boolean?,
 	originalHipHeight = nil :: number?,
 }
 

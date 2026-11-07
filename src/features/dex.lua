@@ -12,6 +12,7 @@ ModMenu.Features = ModMenu.Features or {}
 ModMenu.Features.Dex = {}
 
 local dexLoaded = false
+local dexGen = 0
 
 local function candidateParents(): { Instance }
 	local parents: { Instance } = {}
@@ -53,6 +54,7 @@ ModMenu.Features.Dex.isOpen = function(): boolean
 end
 
 ModMenu.Features.Dex.close = function()
+	dexGen += 1
 	for _, gui in findDexGuis() do
 		pcall(function() gui:Destroy() end)
 	end
@@ -63,7 +65,8 @@ ModMenu.Features.Dex.open = function()
 	if dexLoaded and ModMenu.Features.Dex.isOpen() then
 		return -- already running; avoid stacking a second copy
 	end
-	ModMenu.Features.Dex.close()
+	ModMenu.Features.Dex.close() -- also bumps dexGen
+	local gen = dexGen
 	task.spawn(function()
 		local ok, err = pcall(function()
 			local source = game:HttpGet(DEX_URL, true)
@@ -73,6 +76,16 @@ ModMenu.Features.Dex.open = function()
 			end
 			chunk()
 		end)
+		if gen ~= dexGen then
+			-- Toggled off while the payload was still loading: undo it now.
+			if ok then
+				for _, gui in findDexGuis() do
+					pcall(function() gui:Destroy() end)
+				end
+			end
+			dexLoaded = false
+			return
+		end
 		if ok then
 			dexLoaded = true
 			ModMenu.Notify("Dex Explorer", "Opened.")

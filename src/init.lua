@@ -203,7 +203,22 @@ do
 	end)
 	C.button(p, "Wipe Saved Config", function()
 		pcall(ModMenu.Config.wipe)
-		ModMenu.Notify("Settings", "Config wiped. Reload to reset the UI.")
+		-- Config.wipe() reseeded the defaults in memory; bring the Settings UI
+		-- (preference toggles, open-key dropdown, background) back in sync.
+		for id, syncers in ModMenu.UI.toggleSync do
+			if isPreference(id) then
+				local v = ModMenu.State.toggles[id] == true
+				for _, sync in syncers do
+					pcall(sync, v)
+				end
+			end
+		end
+		local keyset = ModMenu.UI.dropdownSet["settings.openKey"]
+		if keyset then
+			pcall(keyset, ModMenu.State.settings.openKey.Name)
+		end
+		ModMenu.Menu.applyBackground()
+		ModMenu.Notify("Settings", "Config wiped and reset.")
 	end)
 end
 

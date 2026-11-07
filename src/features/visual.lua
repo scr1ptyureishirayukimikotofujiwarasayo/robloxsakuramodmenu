@@ -24,13 +24,15 @@ end
 
 -- Fullbright and Remove Fog both touch fog, so recompute the whole Lighting
 -- state from the current toggles rather than each one blindly overwriting.
+-- Anti-Lag (world.luau) also writes into this state so the three do not fight.
 local function refreshLighting()
 	local o = lightingOriginal()
 	local fullbright = ModMenu.State.toggles["visual.fullbright"] == true
 	local removeFog = ModMenu.State.toggles["visual.removeFog"] == true
+	local antiLag = ModMenu.State.toggles["world.antiLag"] == true
 
 	Lighting.Brightness = if fullbright then 2 else o.Brightness
-	Lighting.GlobalShadows = if fullbright then false else o.GlobalShadows
+	Lighting.GlobalShadows = if (fullbright or antiLag) then false else o.GlobalShadows
 
 	if fullbright then
 		Lighting.ClockTime = 14
@@ -40,7 +42,7 @@ local function refreshLighting()
 		Lighting.ClockTime = o.ClockTime
 	end
 
-	if fullbright or removeFog then
+	if fullbright or removeFog or antiLag then
 		Lighting.FogEnd = 1e5
 		Lighting.FogStart = 0
 	else
@@ -48,6 +50,11 @@ local function refreshLighting()
 		Lighting.FogStart = o.FogStart
 	end
 end
+
+-- Shared so the World tab's Anti-Lag can re-derive the same state instead of
+-- clobbering it, and so restoring snapshots the map's real values. Re-applying
+-- the lighting on load/respawn is not needed (toggles drive it).
+ModMenu.Features.Visual.refreshLighting = refreshLighting
 
 ModMenu.Features.Visual.fullbright = function(_enabled: boolean)
 	refreshLighting()

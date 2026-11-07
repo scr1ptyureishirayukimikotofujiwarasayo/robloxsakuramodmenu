@@ -185,6 +185,9 @@ root.BackgroundTransparency = 0
 root.BorderSizePixel = 0
 root.ZIndex = 0
 root.ClipsDescendants = true -- keeps the photo inside the rounded corners
+-- Consume mouse input over the window so "Click Teleport"/"Click Delete"
+-- (which filter on gameProcessed) ignore clicks on empty menu space too.
+root.Active = true
 Theme.corner(root, 10)
 root.Visible = false
 root.Parent = screen
@@ -379,6 +382,9 @@ local function makePanel(id: string)
 end
 
 local function switchTab(id: string)
+	if ModMenu.UI and ModMenu.UI.hideDropdowns then
+		ModMenu.UI.hideDropdowns()
+	end
 	for _, cat in categories do
 		local panel = ModMenu.Menu.Panels[cat.id]
 		if panel then panel.Visible = (cat.id == id) end
@@ -447,6 +453,9 @@ local function setOpen(value: boolean)
 	ModMenu.Menu.Open = value
 	root.Visible = value
 	floating.Visible = not value
+	if not value and ModMenu.UI and ModMenu.UI.hideDropdowns then
+		ModMenu.UI.hideDropdowns()
+	end
 end
 ModMenu.Menu.setOpen = setOpen
 

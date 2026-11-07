@@ -51,9 +51,44 @@ getconnections = missing("function", getconnections or get_signal_cons)
 
 ModMenu = (typeof(ModMenu) == "table" and ModMenu) or (_G and _G.ModMenu) or {}
 
--- Re-execution: the previous run's feature loops/connections are still live.
--- Tear them down before core/state.luau replaces State.connections, otherwise
--- they become untracked and keep running forever (stacked ESP, fly, etc.).
+-- Re-execution: the previous run's feature loops/connections are still live,
+-- AND every effect it applied (noclip, Lock Workspace, Fullbright, hidden
+-- parts, payload GUIs, ...) is still in force. Tear them down AND revert them
+-- BEFORE core/state.luau replaces State -- otherwise the "original value"
+-- snapshots are lost and the effects become permanent and un-togglable.
+local function isPreference(id: any): boolean
+	return type(id) == "string" and string.sub(id, 1, 9) == "settings."
+end
+
+-- Turning each active toggle off runs its own off-handler, which restores the
+-- originals it snapshotted (see the "Reset Toggles Now" button for the pattern).
+if
+	typeof(ModMenu.UI) == "table"
+	and typeof(ModMenu.UI.toggleApply) == "table"
+	and typeof(ModMenu.State) == "table"
+	and typeof(ModMenu.State.toggles) == "table"
+then
+	for id, callbacks in ModMenu.UI.toggleApply do
+		if not isPreference(id) and ModMenu.State.toggles[id] == true and typeof(callbacks) == "table" then
+			-- Clear the flag first so features that re-derive from the toggle
+			-- table (Fullbright / Remove Fog / Anti-Lag) actually revert.
+			ModMenu.State.toggles[id] = false
+			for _, apply in callbacks do
+				pcall(apply, false)
+			end
+		end
+	end
+end
+
+-- Workspace Visibility is a slider, not a toggle, so revert it explicitly.
+if
+	typeof(ModMenu.Features) == "table"
+	and typeof(ModMenu.Features.Utility) == "table"
+	and typeof(ModMenu.Features.Utility.restoreWorkspaceVisibility) == "function"
+then
+	pcall(ModMenu.Features.Utility.restoreWorkspaceVisibility)
+end
+
 if typeof(ModMenu.State) == "table" and typeof(ModMenu.State.connections) == "table" then
 	for _, bucket in ModMenu.State.connections do
 		for _, conn in bucket do

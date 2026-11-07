@@ -7,9 +7,9 @@ ModMenu.Features.Character = {}
 
 ModMenu.State.originalPlatformStand = ModMenu.State.originalPlatformStand or {}
 ModMenu.State.invisibleOriginal = ModMenu.State.invisibleOriginal or {}
-ModMenu.State.hiddenLimbOwner = ModMenu.State.hiddenLimbOwner or {}
 ModMenu.State.hiddenLimbState = ModMenu.State.hiddenLimbState or {}
 ModMenu.State.blockedHatMeshes = ModMenu.State.blockedHatMeshes or {}
+ModMenu.State.blockedHatParts = ModMenu.State.blockedHatParts or {}
 
 local function char()
 	return S.Players.LocalPlayer.Character
@@ -50,50 +50,84 @@ ModMenu.Features.Character.view = function(tagetName: string?)
 	end
 end
 
+-- Cover both rigs: R6 uses "Left Arm"/"Left Leg", R15 uses the segmented
+-- Upper/Lower/Hand (and Foot) names. FindFirstChild picks whichever exists, so
+-- listing both is safe and makes the toggles work on default (R15) avatars.
+local R6 = {
+	arms = { "Left Arm", "Right Arm" },
+	legs = { "Left Leg", "Right Leg" },
+}
+local R15 = {
+	arms = { "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand" },
+	legs = { "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot" },
+}
+local function concat(...: { string }): { string }
+	local out = {}
+	for _, list in { ... } do
+		for _, name in list do
+			table.insert(out, name)
+		end
+	end
+	return out
+end
 local limbNames = {
-	all = {"Left Arm", "Right Arm", "Left Leg", "Right Leg"},
-	arms = {"Left Arm", "Right Arm"},
-	legs = {"Left Leg", "Right Leg"},
+	all = concat(R6.arms, R6.legs, R15.arms, R15.legs),
+	arms = concat(R6.arms, R15.arms),
+	legs = concat(R6.legs, R15.legs),
 }
 
 -- Hide limbs with Transparency/CanCollide rather than unparenting them: removing
 -- a limb from the model breaks its Motor6D and can leave the character tumbling.
-ModMenu.Features.Character.setLimbs = function(mode: string?, enabled: boolean)
+-- Originals are stored per-part and the desired visibility is recomputed from
+-- the toggles each time, so "No Limbs" and "No Arms"/"No Legs" combine correctly
+-- instead of one toggle's off-state restoring the other's limbs.
+local function applyLimbGroup(names: { string }, hide: boolean)
 	local c = char()
 	if not c then return end
-	local key = mode or "all"
-	local selected = limbNames[key] or limbNames.all
-	for _, limbName in selected do
+	for _, limbName in names do
 		local limb = c:FindFirstChild(limbName)
 		if not limb or not limb:IsA("BasePart") then continue end
-		local owner = ModMenu.State.hiddenLimbOwner[limb]
-		if enabled then
-			if not owner then
+		if hide then
+			if ModMenu.State.hiddenLimbState[limb] == nil then
 				ModMenu.State.hiddenLimbState[limb] = {
 					transparency = limb.Transparency,
 					collide = limb.CanCollide,
 				}
-				limb.Transparency = 1
-				limb.CanCollide = false
-				ModMenu.State.hiddenLimbOwner[limb] = key
 			end
+			limb.Transparency = 1
+			limb.CanCollide = false
 		else
-			if owner == key then
-				local saved = ModMenu.State.hiddenLimbState[limb]
-				if saved then
-					limb.Transparency = saved.transparency
-					limb.CanCollide = saved.collide
-				end
-				ModMenu.State.hiddenLimbOwner[limb] = nil
+			local saved = ModMenu.State.hiddenLimbState[limb]
+			if saved then
+				limb.Transparency = saved.transparency
+				limb.CanCollide = saved.collide
 				ModMenu.State.hiddenLimbState[limb] = nil
 			end
 		end
 	end
 end
 
+local function refreshLimbs()
+	local noLimbs = ModMenu.State.toggles["character.nolimbs"] == true
+	local noArms = noLimbs or ModMenu.State.toggles["character.noarms"] == true
+	local noLegs = noLimbs or ModMenu.State.toggles["character.nolegs"] == true
+	applyLimbGroup(limbNames.all, noLimbs)
+	applyLimbGroup(limbNames.arms, noArms)
+	applyLimbGroup(limbNames.legs, noLegs)
+end
+
+-- Public entry point used by the three limb toggles. Recomputes every group from
+-- the current toggle state instead of honouring a single per-limb owner.
+ModMenu.Features.Character.setLimbs = function(_mode: string?, _enabled: boolean)
+	refreshLimbs()
+end
+
+ModMenu.Features.Character.refreshLimbs = refreshLimbs
+
 ModMenu.Features.Character.invisible = function(enabled: boolean)
 	local c = char()
 	if not c then return end
+	local h = c:FindFirstChildOfClass("Humanoid")
 	if enabled then
 		for _, part in c:GetDescendants() do
 			if part:IsA("BasePart") or part:IsA("Decal") then
@@ -103,6 +137,18 @@ ModMenu.Features.Character.invisible = function(enabled: boolean)
 				part.Transparency = 1
 			end
 		end
+		-- Also hide the engine nametag/health bar, otherwise an "invisible" player
+		-- still shows a floating name above everyone else's screen.
+		if h then
+			if ModMenu.State.invisibleDisplay == nil then
+				ModMenu.State.invisibleDisplay = {
+					name = h.NameDisplayDistance,
+					health = h.HealthDisplayDistance,
+				}
+			end
+			h.NameDisplayDistance = 0
+			h.HealthDisplayDistance = 0
+		end
 	else
 		for part, value in ModMenu.State.invisibleOriginal do
 			if part and part.Parent then
@@ -110,6 +156,11 @@ ModMenu.Features.Character.invisible = function(enabled: boolean)
 			end
 		end
 		table.clear(ModMenu.State.invisibleOriginal)
+		if h and ModMenu.State.invisibleDisplay then
+			h.NameDisplayDistance = ModMenu.State.invisibleDisplay.name
+			h.HealthDisplayDistance = ModMenu.State.invisibleDisplay.health
+		end
+		ModMenu.State.invisibleDisplay = nil
 	end
 end
 
@@ -125,6 +176,13 @@ ModMenu.Features.Character.blockHats = function(enabled: boolean)
 							ModMenu.State.blockedHatMeshes[descendant] = descendant.Parent
 						end
 						descendant.Parent = nil
+					elseif descendant:IsA("BasePart") or descendant:IsA("Decal") then
+						-- Modern hats use a MeshPart handle with no SpecialMesh, so
+						-- hide the part itself too or those hats stay visible.
+						if ModMenu.State.blockedHatParts[descendant] == nil then
+							ModMenu.State.blockedHatParts[descendant] = descendant.Transparency
+						end
+						descendant.Transparency = 1
 					end
 				end
 			end
@@ -136,6 +194,12 @@ ModMenu.Features.Character.blockHats = function(enabled: boolean)
 			end
 		end
 		table.clear(ModMenu.State.blockedHatMeshes)
+		for part, transparency in ModMenu.State.blockedHatParts do
+			if part and part.Parent then
+				part.Transparency = transparency
+			end
+		end
+		table.clear(ModMenu.State.blockedHatParts)
 	end
 end
 
@@ -147,9 +211,10 @@ table.insert(ModMenu.State.getConnections("character.respawn"), S.Players.LocalP
 
 	-- Drop state keyed on the previous (destroyed) character to avoid leaks.
 	table.clear(ModMenu.State.invisibleOriginal)
-	table.clear(ModMenu.State.hiddenLimbOwner)
 	table.clear(ModMenu.State.hiddenLimbState)
 	table.clear(ModMenu.State.blockedHatMeshes)
+	table.clear(ModMenu.State.blockedHatParts)
+	ModMenu.State.invisibleDisplay = nil
 
 	if ModMenu.State.toggles["character.platformStand"] then
 		h.PlatformStand = true
@@ -160,15 +225,8 @@ table.insert(ModMenu.State.getConnections("character.respawn"), S.Players.LocalP
 		if ModMenu.State.toggles["character.invisible"] then
 			ModMenu.Features.Character.invisible(true)
 		end
-		if ModMenu.State.toggles["character.nolimbs"] then
-			ModMenu.Features.Character.setLimbs("all", true)
-		end
-		if ModMenu.State.toggles["character.noarms"] then
-			ModMenu.Features.Character.setLimbs("arms", true)
-		end
-		if ModMenu.State.toggles["character.nolegs"] then
-			ModMenu.Features.Character.setLimbs("legs", true)
-		end
+		-- Recompute all three limb groups from the toggles in a single pass.
+		refreshLimbs()
 		if ModMenu.State.toggles["character.blockHats"] then
 			ModMenu.Features.Character.blockHats(true)
 		end

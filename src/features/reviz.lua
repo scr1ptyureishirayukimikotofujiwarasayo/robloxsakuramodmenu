@@ -14,6 +14,7 @@ ModMenu.Features = ModMenu.Features or {}
 ModMenu.Features.Reviz = {}
 
 local revizLoaded = false
+local revizGen = 0
 
 local function candidateParents(): { Instance }
 	local parents: { Instance } = {}
@@ -75,6 +76,7 @@ local function unloadExisting()
 	for _, gui in findGuis() do
 		pcall(function() gui:Destroy() end)
 	end
+	revizGen += 1
 	revizLoaded = false
 end
 
@@ -87,7 +89,8 @@ ModMenu.Features.Reviz.open = function()
 	if revizLoaded and ModMenu.Features.Reviz.isOpen() then
 		return -- already running; avoid stacking a second copy
 	end
-	unloadExisting()
+	unloadExisting() -- also bumps revizGen
+	local gen = revizGen
 	task.spawn(function()
 		local ok, err = pcall(function()
 			local source = game:HttpGet(REVIZ_URL, true)
@@ -97,6 +100,16 @@ ModMenu.Features.Reviz.open = function()
 			end
 			chunk()
 		end)
+		if gen ~= revizGen then
+			-- Toggled off while the payload was still loading: undo it now.
+			if ok then
+				for _, gui in findGuis() do
+					pcall(function() gui:Destroy() end)
+				end
+			end
+			revizLoaded = false
+			return
+		end
 		if ok then
 			revizLoaded = true
 			-- A finished chunk with no GUI means it ran but could not parent its

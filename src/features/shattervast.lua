@@ -14,6 +14,7 @@ ModMenu.Features = ModMenu.Features or {}
 ModMenu.Features.Shattervast = {}
 
 local shattervastLoaded = false
+local shattervastGen = 0
 
 local function candidateParents(): { Instance }
 	local parents: { Instance } = {}
@@ -71,6 +72,7 @@ local function unloadExisting()
 	for _, gui in findGuis() do
 		pcall(function() gui:Destroy() end)
 	end
+	shattervastGen += 1
 	shattervastLoaded = false
 end
 
@@ -83,7 +85,8 @@ ModMenu.Features.Shattervast.open = function()
 	if shattervastLoaded and ModMenu.Features.Shattervast.isOpen() then
 		return -- already running; avoid stacking a second copy
 	end
-	unloadExisting()
+	unloadExisting() -- also bumps shattervastGen
+	local gen = shattervastGen
 	task.spawn(function()
 		local ok, err = pcall(function()
 			local source = game:HttpGet(SHATTERVAST_URL, true)
@@ -93,6 +96,16 @@ ModMenu.Features.Shattervast.open = function()
 			end
 			chunk()
 		end)
+		if gen ~= shattervastGen then
+			-- Toggled off while the payload was still loading: undo it now.
+			if ok then
+				for _, gui in findGuis() do
+					pcall(function() gui:Destroy() end)
+				end
+			end
+			shattervastLoaded = false
+			return
+		end
 		if ok then
 			shattervastLoaded = true
 			ModMenu.Notify("Grac3Haz3Lion's ShatterVast Admin", "Loaded. Press ; for the command bar.")
