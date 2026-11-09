@@ -1,4 +1,4 @@
-# Mod Menu 0.4.5
+# Mod Menu 0.4.6
 
 Client-side Roblox mod menu generated from the supplied source files.
 
@@ -33,8 +33,9 @@ The menu is organised into tabs. What each one currently does:
   `Block Hats`, View Player, Unview, Reset Movement. Character toggles re-apply
   automatically after you respawn.
 - **Protection** - `Anti-Fling` (watchdog that zeroes runaway velocity, unseats fling
-  seats and snaps you back to your last safe position) and `Anti-Teleport` (reverts
-  single-frame moves larger than the slider). The menu's own teleports are exempted
+  seats and snaps you back to your last safe position), `Anti-Teleport` (reverts
+  single-frame moves larger than the slider) and `Player Guard` (while AFK, escapes away
+  from any player that comes near - see Notes). The menu's own teleports are exempted
   through an internal bypass window.
 - **Utility** - Dex Explorer, SakuraVibes999's Reviz Admin, Grac3Haz3Lion's ShatterVast Admin, Click Teleport, Save / Load Position, Workspace Visibility,
   Restore Workspace, Click Delete (reversible), Lock Workspace, Tool Grabber, Tool Reach,
@@ -52,6 +53,18 @@ The menu is organised into tabs. What each one currently does:
   the workspace on a configurable interval. They require the `fireclickdetector` /
   `firetouchinterest` executor globals; the toggles turn themselves back off with a
   notification if the executor lacks them.
+- **Player Guard (AFK):** after the configured timeout without input (keyboard, mouse,
+  touch, gamepad - menu clicks count) you are considered AFK and the guard watches for
+  other players inside the detect radius. The nearest one within range triggers an escape
+  teleport (default 150 studs) directly away from them, with a 3 s cooldown between
+  escapes. Destinations are raycast-validated - mostly clear path plus walkable ground -
+  so the escape never drops you into the void; when no direction qualifies it recovers to
+  the last spot where you stood on solid ground (and stays put if even that is gone). An
+  anti-void watchdog restores you to that safe spot if you start falling while AFK.
+  `Trigger: Always` keeps the escape guard running while you are active.
+  `Test: Escape Nearest Player` performs one escape on demand so landing spots can be
+  checked in-game. Server anti-cheat can rubber-band client teleports, same as the other
+  teleport features.
 - **Persistence:** by default `Remember Toggles on Load` is **off**, so every run (including a
   server hop) starts with all feature toggles off - only non-feature settings (open key,
   accent, background, waypoints, saved position) persist. Slider values you actually drag
@@ -76,6 +89,12 @@ The menu is organised into tabs. What each one currently does:
   executor's workspace folder via `getcustomasset`, auto-downloading `picture.png` if
   missing. If `getcustomasset` is unavailable it falls back to the uploaded decal id in
   `BACKGROUND_ASSET_ID` (`src/ui/menu.luau`), then to a solid themed background.
+
+## What's new in 0.4.6
+
+- **Player Guard (AFK)** (Protection tab): auto-escapes away from nearby players while
+  you are AFK, with raycast-validated escape destinations, anti-void fallback to your
+  last grounded spot, and an optional `Always` trigger mode.
 
 ## Fixes in 0.4.5
 

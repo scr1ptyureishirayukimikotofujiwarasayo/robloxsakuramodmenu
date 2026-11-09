@@ -1,4 +1,4 @@
-# Mod Menu 0.4.5
+# Mod Menu 0.4.6
 
 Client-side Roblox mod menu generated from the supplied source files.
 
@@ -29,7 +29,8 @@ Client-side Roblox mod menu generated from the supplied source files.
 - **Teleport** - `Teleport to Spawn`, `Copy Position`, `Rejoin Server`.
 - **Character** - Hip Height, `Platform Stand`, `Invisible`, `No Limbs` / `No Arms` / `No Legs`,
   `Block Hats`, View Player, Unview, Reset Movement.
-- **Protection** - `Anti-Fling` and `Anti-Teleport` (see Notes).
+- **Protection** - `Anti-Fling` and `Anti-Teleport`, plus `Player Guard` (AFK proximity
+  escape; see Notes).
 - **Utility** - Dex Explorer, SakuraVibes999's Reviz Admin, Grac3Haz3Lion's ShatterVast Admin, Click Teleport, Save / Load Position, Workspace Visibility,
   Restore Workspace, Click Delete (reversible), Lock Workspace, Tool Grabber, Tool Reach,
   `Interactions` and diagnostics (`FE Check`, `Player Info`).
@@ -65,6 +66,16 @@ Client-side Roblox mod menu generated from the supplied source files.
   bypass window is open, which Click TP, waypoints and saved positions set before moving you.
   Anti-teleport can rubber-band against legitimate server teleports - turn it off in games
   that teleport you by design.
+- **Player Guard (AFK):** when no input arrives for the slider timeout (default 60 s) you are
+  considered AFK and the guard watches for other players inside the detect radius (default
+  30 studs). The nearest one triggers an escape teleport (default 150 studs) directly away
+  from them, with a 3 s cooldown between escapes. Destinations are raycast-validated
+  (mostly clear path plus walkable ground), so an escape never lands in the void; when
+  nothing qualifies it falls back to the last spot where you stood on solid ground. An
+  anti-void watchdog restores that spot if you start falling while AFK, and
+  `Trigger: Always` keeps the escape guard running even when you are active.
+  `Test: Escape Nearest Player` performs one escape on demand. Server anti-cheat can
+  rubber-band client teleports, same as other teleports.
 - **Utility > Interactions:** the auto loops fire every ClickDetector (`fireclickdetector`)
   and every other part with a TouchTransmitter (`firetouchinterest` begin+end pair from your
   root part) in the workspace once per interval (slider, default 1s). Your own character is

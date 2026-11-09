@@ -110,6 +110,13 @@ do
 	C.section(p, "Anti-Teleport")
 	C.toggle(p, "protection.antiTeleport", "Anti-Teleport", false, function(v) ModMenu.Features.Protection.antiTeleport(v) end)
 	C.slider(p, "protection.tpMaxStuds", "Max Studs Per Frame", 5, 500, 50)
+	C.section(p, "Player Guard (AFK)")
+	C.toggle(p, "protection.playerGuard", "Protect While AFK", false, function(v) ModMenu.Features.Protection.playerGuard(v) end)
+	C.slider(p, "protection.guardAfk", "AFK After (s)", 5, 300, 60)
+	C.slider(p, "protection.guardRadius", "Detect Range (studs)", 5, 200, 30)
+	C.slider(p, "protection.guardEscape", "Escape Distance (studs)", 25, 1000, 150)
+	C.dropdown(p, "protection.guardMode", "Trigger", { "AFK Only", "Always" }, "AFK Only")
+	C.button(p, "Test: Escape Nearest Player", function() ModMenu.Features.Protection.guardTest() end)
 end
 
 -- Utility
