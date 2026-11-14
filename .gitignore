@@ -1,0 +1,13 @@
+# Local development / test scaffolding (not part of the published project)
+.an/
+.harness/
+.analyze_all.luau
+.mock_all.lua
+.mock_build.py
+.mock_env.lua
+.mock_env2.lua
+.mock_run.lua
+.robloxdefs.luau
+
+__pycache__/
+*.pyc

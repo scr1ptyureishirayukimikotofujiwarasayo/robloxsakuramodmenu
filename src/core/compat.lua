@@ -7,47 +7,120 @@ local function missing(expectedType: string, value: any, fallback: any): any
 	return fallback
 end
 
-getgenv = missing("function", getgenv, function(): any return {} end)
-gethui = missing("function", gethui or get_hidden_gui)
-syn = missing("table", syn, {}) :: any
-syn_protect_gui = missing("function", syn and syn.protect_gui)
-sethidden = missing("function", sethiddenproperty or set_hidden_property or set_hidden_prop)
-gethidden = missing("function", gethiddenproperty or get_hidden_property or get_hidden_prop)
-queueteleport = missing("function", queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport))
-httprequest = missing("function", request or http_request or (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request))
-everyClipboard = missing("function", setclipboard or toclipboard or set_clipboard or (Clipboard and Clipboard.set))
+-- Read a field off an executor object without assuming it is indexable: some
+-- executors expose `syn` as userdata, and indexing that can throw.
+local function safeGet(object: any, key: string): any
+	if object == nil then
+		return nil
+	end
+	local kind = type(object)
+	if kind ~= "table" and kind ~= "userdata" then
+		return nil
+	end
+	local ok, value = pcall(function()
+		return object[key]
+	end)
+	if ok then
+		return value
+	end
+	return nil
+end
+
+-- getgenv() must hand back the SAME table on every call: the payload scripts
+-- store their unload hook in it, and a fresh table per call loses it.
+local getgenvStore: { [string]: any } = {}
+getgenv = missing("function", getgenv, function(): any return getgenvStore end)
+
+gethui = missing("function", gethui or get_hidden_gui, function(): any
+	local ok, core = pcall(function()
+		return game:GetService("CoreGui")
+	end)
+	if ok then
+		return core
+	end
+	return nil
+end)
+
+-- Keep the executor's own `syn` object (table OR userdata); replacing it with
+-- {} would throw away syn.request / syn.queue_on_teleport / syn.protect_gui.
+if syn == nil then
+	syn = {}
+end
+syn_protect_gui = missing("function", safeGet(syn, "protect_gui"), function(): any return nil end)
+sethidden = missing("function", sethiddenproperty or set_hidden_property or set_hidden_prop, function(object: any, property: string, hidden: boolean): any
+	if type(object) ~= "table" and type(object) ~= "userdata" then
+		return nil
+	end
+	if property == "Transparency" then
+		object.Transparency = if hidden then 1 else 0
+	end
+	return nil
+end)
+gethidden = missing("function", gethiddenproperty or get_hidden_property or get_hidden_prop, function(object: any, property: string): any
+	if type(object) ~= "table" and type(object) ~= "userdata" then
+		return nil
+	end
+	return safeGet(object, property)
+end)
+queueteleport = missing(
+	"function",
+	queue_on_teleport or safeGet(syn, "queue_on_teleport") or safeGet(fluxus, "queue_on_teleport")
+)
+httprequest = missing(
+	"function",
+	request
+		or http_request
+		or safeGet(syn, "request")
+		or safeGet(http, "request")
+		or safeGet(fluxus, "request")
+)
+everyClipboard = missing("function", setclipboard or toclipboard or set_clipboard or safeGet(Clipboard, "set"))
 firetouchinterest = missing("function", firetouchinterest)
+-- fireclickdetector has no sensible fallback: interaction.lua checks for it and
+-- switches its own toggle back off when the executor does not provide it.
+fireclickdetector = missing("function", fireclickdetector)
+
 waxwritefile, waxreadfile = writefile, readfile
-writefile = missing("function", waxwritefile) and function(file: string, data: string, safe: boolean?)
-	if safe == true then
-		return pcall(waxwritefile, file, data)
+if type(waxwritefile) == "function" then
+	writefile = function(file: string, data: string, safe: boolean?)
+		if safe == true then
+			return pcall(waxwritefile, file, data)
+		end
+		waxwritefile(file, data)
 	end
-	waxwritefile(file, data)
 end
-readfile = missing("function", waxreadfile) and function(file: string, safe: boolean?)
-	if safe == true then
-		return pcall(waxreadfile, file)
+if type(waxreadfile) == "function" then
+	readfile = function(file: string, safe: boolean?)
+		if safe == true then
+			return pcall(waxreadfile, file)
+		end
+		return waxreadfile(file)
 	end
-	return waxreadfile(file)
 end
-isfile = missing("function", isfile, readfile and function(file: string)
+isfile = missing("function", isfile, readfile and function(file: string): boolean
 	local success, result = pcall(function()
 		return readfile(file)
 	end)
 	return success and result ~= nil and result ~= ""
 end)
-makefolder = missing("function", makefolder)
-isfolder = missing("function", isfolder)
-getcustomasset = missing("function", getcustomasset or getsynasset)
-hookfunction = missing("function", hookfunction)
-hookmetamethod = missing("function", hookmetamethod)
-getnamecallmethod = missing("function", getnamecallmethod or get_namecall_method)
+makefolder = missing("function", makefolder, function(): any return nil end)
+isfolder = missing("function", isfolder, function(): any return false end)
+-- An empty content id makes the caller fall through to its next fallback.
+getcustomasset = missing("function", getcustomasset or getsynasset, function(): any return "" end)
+hookfunction = missing("function", hookfunction, function(_: any, name: any): any return name end)
+hookmetamethod = missing("function", hookmetamethod, function(_: any, index: any): any return index end)
+getnamecallmethod = missing("function", getnamecallmethod or get_namecall_method, function(): any return nil end)
 checkcaller = missing("function", checkcaller, function(): boolean return false end)
 newcclosure = missing("function", newcclosure, function(f: (...any) -> ...any, ...: any): ...any return f(...) end)
-getgc = missing("function", getgc or get_gc_objects)
-setthreadidentity = missing("function", setthreadidentity or (syn and syn.set_thread_identity) or syn_context_set or setthreadcontext)
-replicatesignal = missing("function", replicatesignal)
-getconnections = missing("function", getconnections or get_signal_cons)
+getgc = missing("function", getgc or get_gc_objects, function(): any return {} end)
+setthreadidentity = missing(
+	"function",
+	setthreadidentity or safeGet(syn, "set_thread_identity") or syn_context_set or setthreadcontext,
+	function(): any return nil end
+)
+replicatesignal = missing("function", replicatesignal, function(): any return nil end)
+getconnections = missing("function", getconnections or get_signal_cons, function(): any return {} end)
+delfile = missing("function", delfile)
 
 ModMenu = (typeof(ModMenu) == "table" and ModMenu) or (_G and _G.ModMenu) or {}
 
@@ -99,4 +172,12 @@ end
 
 _G = _G or {}
 _G.ModMenu = ModMenu
-ModMenu.Compat = { missing = missing }
+ModMenu.Compat = {
+	missing = missing,
+	safeGet = safeGet,
+	-- Read a field off the executor's `syn` object without assuming it is a
+	-- table (some executors expose it as userdata).
+	getSyn = function(name: string): any
+		return safeGet(syn, name)
+	end,
+}

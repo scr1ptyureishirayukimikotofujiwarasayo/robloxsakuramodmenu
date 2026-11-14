@@ -17,8 +17,8 @@ local function tpBypass(seconds: number?)
 end
 
 ModMenu.Features.Teleport.toSpawn = function()
-	local r = ModMenu.Services.Players.LocalPlayer.Character
-		and ModMenu.Services.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	local lp = S.Players.LocalPlayer
+	local r = lp and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
 	if not r then return end
 	-- Spawns are often nested in a folder or named SP_Waypoint etc., so search
 	-- the whole workspace by class rather than only a direct child by name.
@@ -32,7 +32,8 @@ ModMenu.Features.Teleport.toSpawn = function()
 end
 
 ModMenu.Features.Teleport.copyPosition = function()
-	local r = ModMenu.Services.Players.LocalPlayer.Character and ModMenu.Services.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	local lp = S.Players.LocalPlayer
+	local r = lp and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
 	if r then
 		local pos = r.Position
 		local text = string.format("%.2f, %.2f, %.2f", pos.X, pos.Y, pos.Z)
@@ -45,14 +46,18 @@ ModMenu.Features.Teleport.copyPosition = function()
 	end
 end
 
-local REJOIN_LOADSTRING = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/main/loader.lua"))()'
+local REJOIN_LOADSTRING = 'loadstring(game:HttpGet("' .. ModMenu.Config.repoBase .. 'loader.lua"))()'
 local rejoinQueued = false
 
 ModMenu.Features.Teleport.rejoin = function()
 	-- Teleports create a fresh DataModel: queue the loader so the menu
 	-- rebuilds itself in the new session (needs executor teleport-queue support).
 	-- util compat resolves queue_on_teleport under several executor names.
-	local queue = queueteleport or queue_on_teleport or (syn and syn.queue_on_teleport)
+	-- `syn` may be userdata on some executors, so read it through the safe
+	-- accessor instead of indexing it directly.
+	local queue = queueteleport
+		or queue_on_teleport
+		or (ModMenu.Compat and ModMenu.Compat.getSyn and ModMenu.Compat.getSyn("queue_on_teleport"))
 	if queue and not rejoinQueued then
 		pcall(queue, REJOIN_LOADSTRING)
 		rejoinQueued = true

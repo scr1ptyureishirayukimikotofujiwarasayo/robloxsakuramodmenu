@@ -76,7 +76,8 @@ ModMenu.Features.Interaction.touchInterestLoop = function(enabled: boolean)
 		if acc < interval() then return end
 		acc = 0
 		local r = root()
-		local char = Players.LocalPlayer.Character
+		local lp = Players.LocalPlayer
+		local char = lp and lp.Character
 		local fired = 0
 		for _, d in Workspace:GetDescendants() do
 			if d:IsA("TouchTransmitter") then

@@ -6,7 +6,7 @@ Client-side Roblox mod menu generated from the supplied source files.
 
 - `src/` - modular development source.
 - `dist/ModMenu.lua` - runnable single-file bundle for an executor.
-- `build.py` - concatenates `src/*.luau` into the bundle (`python build.py [version]`).
+- `build.py` - concatenates `src/*.lua` into the bundle (`python build.py [version]`).
 - `loader.lua` - fetches and runs each module from this repository.
 - `docs/` - usage notes.
 
@@ -44,7 +44,10 @@ Client-side Roblox mod menu generated from the supplied source files.
   executor's workspace folder via `getcustomasset` (Real: its Workspace
   folder), auto-downloading `picture.png` into `ModMenuBackground.png` if missing.
   If `getcustomasset` is unavailable it falls back to the uploaded decal id in
-  `BACKGROUND_ASSET_ID` (src/ui/menu.luau), then to a solid background.
+  `BACKGROUND_ASSET_ID` (src/ui/menu.lua), then to a solid background.
+- **Remote assets:** every download (loader, Dex / Reviz / ShatterVast payloads, background image)
+  uses `ModMenu.Config.repoBase` in `src/core/config.lua`. If the repository moves, change that
+  single value instead of editing each feature file.
   No Roblox upload is needed on Real.
 - **Background controls:** Settings > Background has an on/off toggle and a
   brightness slider (0-255, default 80). Both persist in `ModMenuConfig.json`.

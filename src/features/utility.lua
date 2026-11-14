@@ -35,7 +35,9 @@ ModMenu.Features.Utility.clickDelete = function(enabled: boolean)
 		table.clear(ModMenu.State.hiddenParts)
 		return
 	end
-	local mouse = S.Players.LocalPlayer:GetMouse()
+	local lp = S.Players.LocalPlayer
+	if not lp then return end
+	local mouse = lp:GetMouse()
 	-- UserInputService instead of mouse.Button1Down so a click already consumed
 	-- by the menu/GUI (gameProcessed) does not delete the part behind the window.
 	local conn = S.UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -57,7 +59,9 @@ ModMenu.Features.Utility.toolGrabber = function(enabled: boolean)
 	ModMenu.State.clearConnections(id)
 	if not enabled then return end
 	local function grab()
-		local bp = S.Players.LocalPlayer:FindFirstChild("Backpack")
+		local lp = S.Players.LocalPlayer
+		if not lp then return end
+		local bp = lp:FindFirstChild("Backpack")
 		if not bp then return end
 		for _, obj in S.Workspace:GetChildren() do
 			if obj:IsA("Tool") or obj:IsA("HopperBin") then
@@ -69,7 +73,9 @@ ModMenu.Features.Utility.toolGrabber = function(enabled: boolean)
 	local conn = S.Workspace.ChildAdded:Connect(function(child)
 		if enabled and (child:IsA("Tool") or child:IsA("HopperBin")) then
 			task.wait()
-			local bp = S.Players.LocalPlayer:FindFirstChild("Backpack")
+			local lp = S.Players.LocalPlayer
+			if not lp then return end
+			local bp = lp:FindFirstChild("Backpack")
 			if bp then pcall(function() child.Parent = bp end) end
 		end
 	end)
@@ -136,6 +142,7 @@ ModMenu.Features.Utility.reach = function(enabled: boolean)
 	end
 	local function applyReach()
 		local lp = S.Players.LocalPlayer
+		if not lp then return end
 		local char = lp.Character
 		if not char then return end
 		local tool = char:FindFirstChildOfClass("Tool")
@@ -147,7 +154,11 @@ ModMenu.Features.Utility.reach = function(enabled: boolean)
 				if ModMenu.State.reachOriginal[part] == nil then
 					ModMenu.State.reachOriginal[part] = part.Size
 				end
-				part.Size = ModMenu.State.reachOriginal[part] * Vector3.new(4, 4, 8)
+				-- Vector3 * Vector3 is not a valid operation in Roblox (it throws
+				-- "attempt to perform arithmetic (mul) on Vector3 and Vector3"),
+				-- so the scale factor is applied component by component.
+				local original = ModMenu.State.reachOriginal[part]
+				part.Size = Vector3.new(original.X * 4, original.Y * 4, original.Z * 8)
 			end
 		end
 	end

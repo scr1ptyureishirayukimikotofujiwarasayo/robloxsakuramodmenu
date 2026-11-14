@@ -6,7 +6,7 @@ Client-side Roblox mod menu generated from the supplied source files.
 
 - `src/` - modular development source.
 - `dist/ModMenu.lua` - runnable single-file bundle for an executor.
-- `build.py` - rebuilds the bundle from `src/*.luau` (`python build.py [version]`).
+- `build.py` - rebuilds the bundle from `src/*.lua` (`python build.py [version]`).
 - `loader.lua` - fetches and runs each module from this repository.
 - `docs/` - usage notes.
 
@@ -88,7 +88,10 @@ The menu is organised into tabs. What each one currently does:
 - **Background image:** the menu loads `ModMenuBackground.png` (or `picture.png`) from the
   executor's workspace folder via `getcustomasset`, auto-downloading `picture.png` if
   missing. If `getcustomasset` is unavailable it falls back to the uploaded decal id in
-  `BACKGROUND_ASSET_ID` (`src/ui/menu.luau`), then to a solid themed background.
+  `BACKGROUND_ASSET_ID` (`src/ui/menu.lua`), then to a solid themed background.
+- **Remote assets:** every download (loader, Dex / Reviz / ShatterVast payloads, background image)
+  uses `ModMenu.Config.repoBase` in `src/core/config.lua`. If the repository moves, change that
+  single value instead of editing each feature file.
 
 ## What's new in 0.4.6
 

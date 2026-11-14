@@ -7,7 +7,7 @@
 local S = ModMenu.Services
 local Players = S.Players
 
-local REVIZ_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/main/reviz.lua"
+local REVIZ_URL = ModMenu.Config.repoBase .. "reviz.lua"
 local REVIZ_GUI_NAMES = { "RevizAdmin", "RevizAdminCMDS", "RevizAdminIntro" }
 
 ModMenu.Features = ModMenu.Features or {}

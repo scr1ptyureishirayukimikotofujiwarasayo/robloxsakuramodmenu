@@ -5,6 +5,11 @@ local HttpService = S.HttpService
 
 local CONFIG_PATH = "ModMenuConfig.json"
 
+-- Single source of truth for every remote asset the menu fetches (loader,
+-- dex/reviz/shattervast payloads, background image). Change it here when the
+-- repository moves instead of editing each feature file.
+local REPO_BASE = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/main/"
+
 local function safeRead(path: string): string?
 	if isfile and isfile(path) then
 		local ok, data = pcall(readfile, path)
@@ -23,6 +28,7 @@ end
 
 ModMenu.Config = {
 	path = CONFIG_PATH,
+	repoBase = REPO_BASE,
 	load = function()
 		local raw = safeRead(CONFIG_PATH)
 		if not raw then return end
@@ -156,9 +162,11 @@ ModMenu.Config = {
 	wipe = function()
 		-- Delete the saved file where the executor allows, else overwrite it empty,
 		-- then reset the in-memory state so the running menu matches.
+		-- `delfile` only exists on some executors; when it is missing (or the
+		-- delete fails) fall back to overwriting the file with an empty config.
 		local removed = false
 		if type(delfile) == "function" then
-			removed = pcall(delfile, CONFIG_PATH)
+			removed = (pcall(delfile, CONFIG_PATH))
 		end
 		if not removed then
 			safeWrite(CONFIG_PATH, "{}")

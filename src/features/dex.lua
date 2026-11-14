@@ -14,7 +14,7 @@
 local S = ModMenu.Services
 local Players = S.Players
 
-local DEX_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/main/dex.lua"
+local DEX_URL = ModMenu.Config.repoBase .. "dex.lua"
 
 -- Guis that identify "dex is open" plus helpers Dex creates lazily, after the
 -- load snapshot was taken (context menu, colour picker, selection highlights).

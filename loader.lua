@@ -43,4 +43,8 @@ run("src/features/reviz.lua")
 run("src/features/shattervast.lua")
 run("src/init.lua")
 
+if type(_G.ModMenu) ~= "table" then
+	warn("[ModMenu] The menu did not initialise - check the console for the errors above.")
+end
+
 return _G.ModMenu

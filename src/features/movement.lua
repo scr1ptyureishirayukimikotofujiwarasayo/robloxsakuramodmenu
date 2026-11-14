@@ -9,7 +9,8 @@ ModMenu.Features = ModMenu.Features or {}
 ModMenu.Features.Movement = {}
 
 local function char()
-	return S.Players.LocalPlayer.Character
+	local lp = S.Players.LocalPlayer
+	return lp and lp.Character
 end
 local function hum(): Humanoid?
 	local c = char()

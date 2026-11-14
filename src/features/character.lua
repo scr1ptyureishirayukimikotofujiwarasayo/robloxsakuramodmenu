@@ -12,7 +12,8 @@ ModMenu.State.blockedHatMeshes = ModMenu.State.blockedHatMeshes or {}
 ModMenu.State.blockedHatParts = ModMenu.State.blockedHatParts or {}
 
 local function char()
-	return S.Players.LocalPlayer.Character
+	local lp = S.Players.LocalPlayer
+	return lp and lp.Character
 end
 local function hum(): Humanoid?
 	local c = char()

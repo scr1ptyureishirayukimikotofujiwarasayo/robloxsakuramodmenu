@@ -22,12 +22,14 @@ local function isBypassed(): boolean
 end
 
 local function root(): BasePart?
-	local c = Players.LocalPlayer.Character
+	local lp = Players.LocalPlayer
+	local c = lp and lp.Character
 	return if c then c:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 end
 
 local function hum(): Humanoid?
-	local c = Players.LocalPlayer.Character
+	local lp = Players.LocalPlayer
+	local c = lp and lp.Character
 	return if c then c:FindFirstChildOfClass("Humanoid") else nil
 end
 

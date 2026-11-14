@@ -7,7 +7,7 @@
 local S = ModMenu.Services
 local Players = S.Players
 
-local SHATTERVAST_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/main/shattervast.lua"
+local SHATTERVAST_URL = ModMenu.Config.repoBase .. "shattervast.lua"
 local SHATTERVAST_GUI_NAMES = { "CommandBar", "CMDS_GUI_V2", "ChatLogsv2", "Notification", "Intro", "InfoGUIv2" }
 
 ModMenu.Features = ModMenu.Features or {}

@@ -14,7 +14,7 @@ local C = ModMenu.UI.Components
 --      ImageLabel loads rbxassetid; a load timeout falls back to solid.
 --   3) Solid themed background.
 local BACKGROUND_FILES = { "ModMenuBackground.png", "picture.png" } -- files in the executor's workspace folder
-local BACKGROUND_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/main/picture.png"
+local BACKGROUND_URL = ModMenu.Config.repoBase .. "picture.png"
 local BACKGROUND_ASSET_ID = "86915755447721"
 local PNG_MAGIC = "\137PNG\r\n\26\n"
 

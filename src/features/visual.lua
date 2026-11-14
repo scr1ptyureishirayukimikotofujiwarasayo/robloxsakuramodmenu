@@ -102,7 +102,15 @@ ModMenu.Features.Visual.esp = function(enabled: boolean)
 	-- The Heartbeat pass already adds/removes highlights for every player,
 	-- including respawns and joins, so no per-player CharacterAdded tracking is
 	-- needed (that would leak a connection for every player who left).
+	-- It is throttled to a few checks per second: a per-frame sweep over every
+	-- player is pure overhead for a purely visual effect.
+	local nextScan = 0
 	local conn = RunService.Heartbeat:Connect(function()
+		local now = os.clock()
+		if now < nextScan then
+			return
+		end
+		nextScan = now + 0.25
 		for _, p in S.Players:GetPlayers() do
 			if p ~= S.Players.LocalPlayer and p.Character then
 				if ModMenu.State.toggles["visual.esp"] then

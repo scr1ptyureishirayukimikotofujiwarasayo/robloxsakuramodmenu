@@ -2,7 +2,7 @@
 -- Mod Menu (client) - generated from local sources
 -- Version: 0.4.6
 
--- ===== src\core\compat.luau =====
+-- ===== src\core\compat.lua =====
 --!strict
 -- core/compat.luau
 local function missing(expectedType: string, value: any, fallback: any): any
@@ -12,47 +12,120 @@ local function missing(expectedType: string, value: any, fallback: any): any
 	return fallback
 end
 
-getgenv = missing("function", getgenv, function(): any return {} end)
-gethui = missing("function", gethui or get_hidden_gui)
-syn = missing("table", syn, {}) :: any
-syn_protect_gui = missing("function", syn and syn.protect_gui)
-sethidden = missing("function", sethiddenproperty or set_hidden_property or set_hidden_prop)
-gethidden = missing("function", gethiddenproperty or get_hidden_property or get_hidden_prop)
-queueteleport = missing("function", queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport))
-httprequest = missing("function", request or http_request or (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request))
-everyClipboard = missing("function", setclipboard or toclipboard or set_clipboard or (Clipboard and Clipboard.set))
+-- Read a field off an executor object without assuming it is indexable: some
+-- executors expose `syn` as userdata, and indexing that can throw.
+local function safeGet(object: any, key: string): any
+	if object == nil then
+		return nil
+	end
+	local kind = type(object)
+	if kind ~= "table" and kind ~= "userdata" then
+		return nil
+	end
+	local ok, value = pcall(function()
+		return object[key]
+	end)
+	if ok then
+		return value
+	end
+	return nil
+end
+
+-- getgenv() must hand back the SAME table on every call: the payload scripts
+-- store their unload hook in it, and a fresh table per call loses it.
+local getgenvStore: { [string]: any } = {}
+getgenv = missing("function", getgenv, function(): any return getgenvStore end)
+
+gethui = missing("function", gethui or get_hidden_gui, function(): any
+	local ok, core = pcall(function()
+		return game:GetService("CoreGui")
+	end)
+	if ok then
+		return core
+	end
+	return nil
+end)
+
+-- Keep the executor's own `syn` object (table OR userdata); replacing it with
+-- {} would throw away syn.request / syn.queue_on_teleport / syn.protect_gui.
+if syn == nil then
+	syn = {}
+end
+syn_protect_gui = missing("function", safeGet(syn, "protect_gui"), function(): any return nil end)
+sethidden = missing("function", sethiddenproperty or set_hidden_property or set_hidden_prop, function(object: any, property: string, hidden: boolean): any
+	if type(object) ~= "table" and type(object) ~= "userdata" then
+		return nil
+	end
+	if property == "Transparency" then
+		object.Transparency = if hidden then 1 else 0
+	end
+	return nil
+end)
+gethidden = missing("function", gethiddenproperty or get_hidden_property or get_hidden_prop, function(object: any, property: string): any
+	if type(object) ~= "table" and type(object) ~= "userdata" then
+		return nil
+	end
+	return safeGet(object, property)
+end)
+queueteleport = missing(
+	"function",
+	queue_on_teleport or safeGet(syn, "queue_on_teleport") or safeGet(fluxus, "queue_on_teleport")
+)
+httprequest = missing(
+	"function",
+	request
+		or http_request
+		or safeGet(syn, "request")
+		or safeGet(http, "request")
+		or safeGet(fluxus, "request")
+)
+everyClipboard = missing("function", setclipboard or toclipboard or set_clipboard or safeGet(Clipboard, "set"))
 firetouchinterest = missing("function", firetouchinterest)
+-- fireclickdetector has no sensible fallback: interaction.lua checks for it and
+-- switches its own toggle back off when the executor does not provide it.
+fireclickdetector = missing("function", fireclickdetector)
+
 waxwritefile, waxreadfile = writefile, readfile
-writefile = missing("function", waxwritefile) and function(file: string, data: string, safe: boolean?)
-	if safe == true then
-		return pcall(waxwritefile, file, data)
+if type(waxwritefile) == "function" then
+	writefile = function(file: string, data: string, safe: boolean?)
+		if safe == true then
+			return pcall(waxwritefile, file, data)
+		end
+		waxwritefile(file, data)
 	end
-	waxwritefile(file, data)
 end
-readfile = missing("function", waxreadfile) and function(file: string, safe: boolean?)
-	if safe == true then
-		return pcall(waxreadfile, file)
+if type(waxreadfile) == "function" then
+	readfile = function(file: string, safe: boolean?)
+		if safe == true then
+			return pcall(waxreadfile, file)
+		end
+		return waxreadfile(file)
 	end
-	return waxreadfile(file)
 end
-isfile = missing("function", isfile, readfile and function(file: string)
+isfile = missing("function", isfile, readfile and function(file: string): boolean
 	local success, result = pcall(function()
 		return readfile(file)
 	end)
 	return success and result ~= nil and result ~= ""
 end)
-makefolder = missing("function", makefolder)
-isfolder = missing("function", isfolder)
-getcustomasset = missing("function", getcustomasset or getsynasset)
-hookfunction = missing("function", hookfunction)
-hookmetamethod = missing("function", hookmetamethod)
-getnamecallmethod = missing("function", getnamecallmethod or get_namecall_method)
+makefolder = missing("function", makefolder, function(): any return nil end)
+isfolder = missing("function", isfolder, function(): any return false end)
+-- An empty content id makes the caller fall through to its next fallback.
+getcustomasset = missing("function", getcustomasset or getsynasset, function(): any return "" end)
+hookfunction = missing("function", hookfunction, function(_: any, name: any): any return name end)
+hookmetamethod = missing("function", hookmetamethod, function(_: any, index: any): any return index end)
+getnamecallmethod = missing("function", getnamecallmethod or get_namecall_method, function(): any return nil end)
 checkcaller = missing("function", checkcaller, function(): boolean return false end)
 newcclosure = missing("function", newcclosure, function(f: (...any) -> ...any, ...: any): ...any return f(...) end)
-getgc = missing("function", getgc or get_gc_objects)
-setthreadidentity = missing("function", setthreadidentity or (syn and syn.set_thread_identity) or syn_context_set or setthreadcontext)
-replicatesignal = missing("function", replicatesignal)
-getconnections = missing("function", getconnections or get_signal_cons)
+getgc = missing("function", getgc or get_gc_objects, function(): any return {} end)
+setthreadidentity = missing(
+	"function",
+	setthreadidentity or safeGet(syn, "set_thread_identity") or syn_context_set or setthreadcontext,
+	function(): any return nil end
+)
+replicatesignal = missing("function", replicatesignal, function(): any return nil end)
+getconnections = missing("function", getconnections or get_signal_cons, function(): any return {} end)
+delfile = missing("function", delfile)
 
 ModMenu = (typeof(ModMenu) == "table" and ModMenu) or (_G and _G.ModMenu) or {}
 
@@ -104,9 +177,17 @@ end
 
 _G = _G or {}
 _G.ModMenu = ModMenu
-ModMenu.Compat = { missing = missing }
+ModMenu.Compat = {
+	missing = missing,
+	safeGet = safeGet,
+	-- Read a field off the executor's `syn` object without assuming it is a
+	-- table (some executors expose it as userdata).
+	getSyn = function(name: string): any
+		return safeGet(syn, name)
+	end,
+}
 
--- ===== src\core\services.luau =====
+-- ===== src\core\services.lua =====
 --!strict
 -- core/services.luau
 local Players = game:GetService("Players")
@@ -140,7 +221,7 @@ ModMenu.Services = cachedServices
 ModMenu.LocalPlayer = cachedServices.Players.LocalPlayer
 ModMenu.Camera = cachedServices.Workspace.CurrentCamera
 
--- ===== src\core\notify.luau =====
+-- ===== src\core\notify.lua =====
 --!strict
 -- core/notify.luau
 local S = ModMenu.Services
@@ -157,7 +238,7 @@ ModMenu.Notify = function(title: string, text: string, duration: number?)
 	end)
 end
 
--- ===== src\core\state.luau =====
+-- ===== src\core\state.lua =====
 --!strict
 -- core/state.luau
 ModMenu.State = {
@@ -216,13 +297,18 @@ ModMenu.State.clearConnections = function(id: string)
 	end
 end
 
--- ===== src\core\config.luau =====
+-- ===== src\core\config.lua =====
 --!strict
 -- core/config.luau
 local S = ModMenu.Services
 local HttpService = S.HttpService
 
 local CONFIG_PATH = "ModMenuConfig.json"
+
+-- Single source of truth for every remote asset the menu fetches (loader,
+-- dex/reviz/shattervast payloads, background image). Change it here when the
+-- repository moves instead of editing each feature file.
+local REPO_BASE = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/main/"
 
 local function safeRead(path: string): string?
 	if isfile and isfile(path) then
@@ -242,6 +328,7 @@ end
 
 ModMenu.Config = {
 	path = CONFIG_PATH,
+	repoBase = REPO_BASE,
 	load = function()
 		local raw = safeRead(CONFIG_PATH)
 		if not raw then return end
@@ -375,9 +462,11 @@ ModMenu.Config = {
 	wipe = function()
 		-- Delete the saved file where the executor allows, else overwrite it empty,
 		-- then reset the in-memory state so the running menu matches.
+		-- `delfile` only exists on some executors; when it is missing (or the
+		-- delete fails) fall back to overwriting the file with an empty config.
 		local removed = false
 		if type(delfile) == "function" then
-			removed = pcall(delfile, CONFIG_PATH)
+			removed = (pcall(delfile, CONFIG_PATH))
 		end
 		if not removed then
 			safeWrite(CONFIG_PATH, "{}")
@@ -388,7 +477,7 @@ ModMenu.Config = {
 
 pcall(ModMenu.Config.load)
 
--- ===== src\ui\theme.luau =====
+-- ===== src\ui\theme.lua =====
 --!strict
 -- ui/theme.luau
 ModMenu.Theme = {
@@ -443,7 +532,7 @@ ModMenu.Theme.accent = function()
 	return ModMenu.State.settings.accent
 end
 
--- ===== src\ui\components.luau =====
+-- ===== src\ui\components.lua =====
 --!strict
 -- ui/components.luau
 local S = ModMenu.Services
@@ -538,8 +627,24 @@ local function toggle(parent: Instance, id: string, label: string, initial: bool
 	-- target, Dex "closed", ...). Register the callback instead; init.luau
 	-- re-applies only the toggles the user actually saved as ON.
 	if apply then
-		ModMenu.UI.toggleApply[id] = ModMenu.UI.toggleApply[id] or {}
-		table.insert(ModMenu.UI.toggleApply[id], apply)
+		local list = ModMenu.UI.toggleApply[id]
+		if not list then
+			list = {}
+			ModMenu.UI.toggleApply[id] = list
+		end
+		-- The same id can appear on two panels (Home + Visual "Fullbright").
+		-- Registering the identical callback twice would apply the feature
+		-- twice on every reset/restore, so keep only one copy of it.
+		local already = false
+		for _, existing in list do
+			if existing == apply then
+				already = true
+				break
+			end
+		end
+		if not already then
+			table.insert(list, apply)
+		end
 	end
 
 	return row
@@ -797,7 +902,7 @@ ModMenu.UI.Components = {
 	dropdown = dropdown,
 }
 
--- ===== src\ui\menu.luau =====
+-- ===== src\ui\menu.lua =====
 --!strict
 -- ui/menu.luau
 local S = ModMenu.Services
@@ -814,7 +919,7 @@ local C = ModMenu.UI.Components
 --      ImageLabel loads rbxassetid; a load timeout falls back to solid.
 --   3) Solid themed background.
 local BACKGROUND_FILES = { "ModMenuBackground.png", "picture.png" } -- files in the executor's workspace folder
-local BACKGROUND_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/main/picture.png"
+local BACKGROUND_URL = ModMenu.Config.repoBase .. "picture.png"
 local BACKGROUND_ASSET_ID = "86915755447721"
 local PNG_MAGIC = "\137PNG\r\n\26\n"
 
@@ -1276,7 +1381,7 @@ setOpen(false)
 applyZOrder()
 -- UI built
 
--- ===== src\features\movement.luau =====
+-- ===== src\features\movement.lua =====
 --!strict
 -- features/movement.luau
 local S = ModMenu.Services
@@ -1288,7 +1393,8 @@ ModMenu.Features = ModMenu.Features or {}
 ModMenu.Features.Movement = {}
 
 local function char()
-	return S.Players.LocalPlayer.Character
+	local lp = S.Players.LocalPlayer
+	return lp and lp.Character
 end
 local function hum(): Humanoid?
 	local c = char()
@@ -1589,7 +1695,7 @@ table.insert(ModMenu.State.getConnections("movement.respawn"), S.Players.LocalPl
 	end
 end))
 
--- ===== src\features\visual.luau =====
+-- ===== src\features\visual.lua =====
 --!strict
 -- features/visual.luau
 local S = ModMenu.Services
@@ -1694,7 +1800,15 @@ ModMenu.Features.Visual.esp = function(enabled: boolean)
 	-- The Heartbeat pass already adds/removes highlights for every player,
 	-- including respawns and joins, so no per-player CharacterAdded tracking is
 	-- needed (that would leak a connection for every player who left).
+	-- It is throttled to a few checks per second: a per-frame sweep over every
+	-- player is pure overhead for a purely visual effect.
+	local nextScan = 0
 	local conn = RunService.Heartbeat:Connect(function()
+		local now = os.clock()
+		if now < nextScan then
+			return
+		end
+		nextScan = now + 0.25
 		for _, p in S.Players:GetPlayers() do
 			if p ~= S.Players.LocalPlayer and p.Character then
 				if ModMenu.State.toggles["visual.esp"] then
@@ -1709,7 +1823,7 @@ ModMenu.Features.Visual.esp = function(enabled: boolean)
 	table.insert(ModMenu.State.getConnections(id), conn)
 end
 
--- ===== src\features\character.luau =====
+-- ===== src\features\character.lua =====
 --!strict
 -- features/character.luau
 local S = ModMenu.Services
@@ -1724,7 +1838,8 @@ ModMenu.State.blockedHatMeshes = ModMenu.State.blockedHatMeshes or {}
 ModMenu.State.blockedHatParts = ModMenu.State.blockedHatParts or {}
 
 local function char()
-	return S.Players.LocalPlayer.Character
+	local lp = S.Players.LocalPlayer
+	return lp and lp.Character
 end
 local function hum(): Humanoid?
 	local c = char()
@@ -1945,7 +2060,7 @@ table.insert(ModMenu.State.getConnections("character.respawn"), S.Players.LocalP
 	end)
 end))
 
--- ===== src\features\utility.luau =====
+-- ===== src\features\utility.lua =====
 --!strict
 -- features/utility.luau
 local S = ModMenu.Services
@@ -1983,7 +2098,9 @@ ModMenu.Features.Utility.clickDelete = function(enabled: boolean)
 		table.clear(ModMenu.State.hiddenParts)
 		return
 	end
-	local mouse = S.Players.LocalPlayer:GetMouse()
+	local lp = S.Players.LocalPlayer
+	if not lp then return end
+	local mouse = lp:GetMouse()
 	-- UserInputService instead of mouse.Button1Down so a click already consumed
 	-- by the menu/GUI (gameProcessed) does not delete the part behind the window.
 	local conn = S.UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -2005,7 +2122,9 @@ ModMenu.Features.Utility.toolGrabber = function(enabled: boolean)
 	ModMenu.State.clearConnections(id)
 	if not enabled then return end
 	local function grab()
-		local bp = S.Players.LocalPlayer:FindFirstChild("Backpack")
+		local lp = S.Players.LocalPlayer
+		if not lp then return end
+		local bp = lp:FindFirstChild("Backpack")
 		if not bp then return end
 		for _, obj in S.Workspace:GetChildren() do
 			if obj:IsA("Tool") or obj:IsA("HopperBin") then
@@ -2017,7 +2136,9 @@ ModMenu.Features.Utility.toolGrabber = function(enabled: boolean)
 	local conn = S.Workspace.ChildAdded:Connect(function(child)
 		if enabled and (child:IsA("Tool") or child:IsA("HopperBin")) then
 			task.wait()
-			local bp = S.Players.LocalPlayer:FindFirstChild("Backpack")
+			local lp = S.Players.LocalPlayer
+			if not lp then return end
+			local bp = lp:FindFirstChild("Backpack")
 			if bp then pcall(function() child.Parent = bp end) end
 		end
 	end)
@@ -2084,6 +2205,7 @@ ModMenu.Features.Utility.reach = function(enabled: boolean)
 	end
 	local function applyReach()
 		local lp = S.Players.LocalPlayer
+		if not lp then return end
 		local char = lp.Character
 		if not char then return end
 		local tool = char:FindFirstChildOfClass("Tool")
@@ -2095,7 +2217,11 @@ ModMenu.Features.Utility.reach = function(enabled: boolean)
 				if ModMenu.State.reachOriginal[part] == nil then
 					ModMenu.State.reachOriginal[part] = part.Size
 				end
-				part.Size = ModMenu.State.reachOriginal[part] * Vector3.new(4, 4, 8)
+				-- Vector3 * Vector3 is not a valid operation in Roblox (it throws
+				-- "attempt to perform arithmetic (mul) on Vector3 and Vector3"),
+				-- so the scale factor is applied component by component.
+				local original = ModMenu.State.reachOriginal[part]
+				part.Size = Vector3.new(original.X * 4, original.Y * 4, original.Z * 8)
 			end
 		end
 	end
@@ -2120,7 +2246,7 @@ ModMenu.Features.Utility.playerInfo = function(targetName: string?)
 	ModMenu.Notify("Player Info", string.format("%s | Age: %d | Id: %d", target.Name, target.AccountAge, target.UserId))
 end
 
--- ===== src\features\teleport.luau =====
+-- ===== src\features\teleport.lua =====
 --!strict
 -- features/teleport.luau
 local S = ModMenu.Services
@@ -2140,8 +2266,8 @@ local function tpBypass(seconds: number?)
 end
 
 ModMenu.Features.Teleport.toSpawn = function()
-	local r = ModMenu.Services.Players.LocalPlayer.Character
-		and ModMenu.Services.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	local lp = S.Players.LocalPlayer
+	local r = lp and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
 	if not r then return end
 	-- Spawns are often nested in a folder or named SP_Waypoint etc., so search
 	-- the whole workspace by class rather than only a direct child by name.
@@ -2155,7 +2281,8 @@ ModMenu.Features.Teleport.toSpawn = function()
 end
 
 ModMenu.Features.Teleport.copyPosition = function()
-	local r = ModMenu.Services.Players.LocalPlayer.Character and ModMenu.Services.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	local lp = S.Players.LocalPlayer
+	local r = lp and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
 	if r then
 		local pos = r.Position
 		local text = string.format("%.2f, %.2f, %.2f", pos.X, pos.Y, pos.Z)
@@ -2168,14 +2295,18 @@ ModMenu.Features.Teleport.copyPosition = function()
 	end
 end
 
-local REJOIN_LOADSTRING = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/main/loader.lua"))()'
+local REJOIN_LOADSTRING = 'loadstring(game:HttpGet("' .. ModMenu.Config.repoBase .. 'loader.lua"))()'
 local rejoinQueued = false
 
 ModMenu.Features.Teleport.rejoin = function()
 	-- Teleports create a fresh DataModel: queue the loader so the menu
 	-- rebuilds itself in the new session (needs executor teleport-queue support).
 	-- util compat resolves queue_on_teleport under several executor names.
-	local queue = queueteleport or queue_on_teleport or (syn and syn.queue_on_teleport)
+	-- `syn` may be userdata on some executors, so read it through the safe
+	-- accessor instead of indexing it directly.
+	local queue = queueteleport
+		or queue_on_teleport
+		or (ModMenu.Compat and ModMenu.Compat.getSyn and ModMenu.Compat.getSyn("queue_on_teleport"))
 	if queue and not rejoinQueued then
 		pcall(queue, REJOIN_LOADSTRING)
 		rejoinQueued = true
@@ -2191,7 +2322,7 @@ ModMenu.Features.Teleport.rejoin = function()
 	end)
 end
 
--- ===== src\features\world.luau =====
+-- ===== src\features\world.lua =====
 --!strict
 -- features/world.luau
 
@@ -2220,7 +2351,7 @@ ModMenu.Features.World.antiLag = function(enabled: boolean)
 	end
 end
 
--- ===== src\features\protection.luau =====
+-- ===== src\features\protection.lua =====
 --!strict
 -- features/protection.luau
 local S = ModMenu.Services
@@ -2245,12 +2376,14 @@ local function isBypassed(): boolean
 end
 
 local function root(): BasePart?
-	local c = Players.LocalPlayer.Character
+	local lp = Players.LocalPlayer
+	local c = lp and lp.Character
 	return if c then c:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 end
 
 local function hum(): Humanoid?
-	local c = Players.LocalPlayer.Character
+	local lp = Players.LocalPlayer
+	local c = lp and lp.Character
 	return if c then c:FindFirstChildOfClass("Humanoid") else nil
 end
 
@@ -2614,7 +2747,7 @@ ModMenu.Features.Protection.guardTest = function()
 	ModMenu.Notify("Player Guard", `Test escape from {threatName or "a player"}`)
 end
 
--- ===== src\features\interaction.luau =====
+-- ===== src\features\interaction.lua =====
 --!strict
 -- features/interaction.luau
 local S = ModMenu.Services
@@ -2693,7 +2826,8 @@ ModMenu.Features.Interaction.touchInterestLoop = function(enabled: boolean)
 		if acc < interval() then return end
 		acc = 0
 		local r = root()
-		local char = Players.LocalPlayer.Character
+		local lp = Players.LocalPlayer
+		local char = lp and lp.Character
 		local fired = 0
 		for _, d in Workspace:GetDescendants() do
 			if d:IsA("TouchTransmitter") then
@@ -2719,7 +2853,7 @@ ModMenu.Features.Interaction.touchInterestLoop = function(enabled: boolean)
 	table.insert(ModMenu.State.getConnections(id), conn)
 end
 
--- ===== src\features\misc.luau =====
+-- ===== src\features\misc.lua =====
 --!strict
 -- features/misc.luau
 local S = ModMenu.Services
@@ -2751,7 +2885,9 @@ ModMenu.Features.Misc.hideAllGuis = function(enabled: boolean)
 	-- actually disabled are re-enabled, so a GUI that started disabled stays off.
 	local id = "misc.hideGuis"
 	ModMenu.State.clearConnections(id)
-	local pg = S.Players.LocalPlayer:FindFirstChild("PlayerGui")
+	local lp = S.Players.LocalPlayer
+	if not lp then return end
+	local pg = lp:FindFirstChild("PlayerGui")
 	if not pg then return end
 	if enabled then
 		for _, child in pg:GetChildren() do
@@ -2769,7 +2905,7 @@ ModMenu.Features.Misc.hideAllGuis = function(enabled: boolean)
 	end
 end
 
--- ===== src\features\dex.luau =====
+-- ===== src\features\dex.lua =====
 --!strict
 -- features/dex.luau
 -- Toggleable Dex Explorer: loads the self-contained embedded build from the
@@ -2786,7 +2922,7 @@ end
 local S = ModMenu.Services
 local Players = S.Players
 
-local DEX_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/main/dex.lua"
+local DEX_URL = ModMenu.Config.repoBase .. "dex.lua"
 
 -- Guis that identify "dex is open" plus helpers Dex creates lazily, after the
 -- load snapshot was taken (context menu, colour picker, selection highlights).
@@ -2995,7 +3131,7 @@ ModMenu.Features.Dex.toggle = function(state: boolean)
 	end
 end
 
--- ===== src\features\reviz.luau =====
+-- ===== src\features\reviz.lua =====
 --!strict
 -- features/reviz.luau
 -- Toggleable SakuraVibes999's Reviz Admin: fetches the script from the repo on enable and runs
@@ -3005,7 +3141,7 @@ end
 local S = ModMenu.Services
 local Players = S.Players
 
-local REVIZ_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/main/reviz.lua"
+local REVIZ_URL = ModMenu.Config.repoBase .. "reviz.lua"
 local REVIZ_GUI_NAMES = { "RevizAdmin", "RevizAdminCMDS", "RevizAdminIntro" }
 
 ModMenu.Features = ModMenu.Features or {}
@@ -3139,7 +3275,7 @@ end
 -- init.luau re-activates it afterwards if the saved toggle is on.
 unloadExisting()
 
--- ===== src\features\shattervast.luau =====
+-- ===== src\features\shattervast.lua =====
 --!strict
 -- features/shattervast.luau
 -- Toggleable Grac3Haz3Lion's ShatterVast Admin: fetches the improved script from the repo on
@@ -3149,7 +3285,7 @@ unloadExisting()
 local S = ModMenu.Services
 local Players = S.Players
 
-local SHATTERVAST_URL = "https://raw.githubusercontent.com/scr1ptyureishirayukimikotofujiwarasayo/robloxsakuramodmenu/main/shattervast.lua"
+local SHATTERVAST_URL = ModMenu.Config.repoBase .. "shattervast.lua"
 local SHATTERVAST_GUI_NAMES = { "CommandBar", "CMDS_GUI_V2", "ChatLogsv2", "Notification", "Intro", "InfoGUIv2" }
 
 ModMenu.Features = ModMenu.Features or {}
@@ -3271,7 +3407,7 @@ end
 -- init.luau re-activates it afterwards if the saved toggle is on.
 unloadExisting()
 
--- ===== src\init.luau =====
+-- ===== src\init.lua =====
 --!strict
 -- init.luau
 local C = ModMenu.UI.Components
@@ -3282,6 +3418,13 @@ local T = ModMenu.Theme
 -- background), not feature toggles. Reset and restore must leave them alone.
 local function isPreference(id: string): boolean
 	return string.sub(id, 1, 9) == "settings."
+end
+
+-- Shared by the Home shortcut and the Visual tab entry: both use the id
+-- "visual.fullbright", so they must register the SAME callback (the UI
+-- registry keeps one entry per distinct callback for an id).
+local function applyFullbright(v: boolean)
+	ModMenu.Features.Visual.fullbright(v)
 end
 
 -- Home
@@ -3300,7 +3443,7 @@ do
 	T.textStroke(info, 0.65)
 	C.section(p, "Quick Actions")
 	C.button(p, "Copy Position", function() ModMenu.Features.Teleport.copyPosition() end)
-	C.toggle(p, "visual.fullbright", "Fullbright", false, function(v) ModMenu.Features.Visual.fullbright(v) end)
+	C.toggle(p, "visual.fullbright", "Fullbright", false, applyFullbright)
 end
 
 -- Player
@@ -3331,7 +3474,7 @@ end
 do
 	local p = Panels.visual
 	C.toggle(p, "visual.esp", "Player ESP (Highlight)", false, function(v) ModMenu.Features.Visual.esp(v) end)
-	C.toggle(p, "visual.fullbright", "Fullbright", false, function(v) ModMenu.Features.Visual.fullbright(v) end)
+	C.toggle(p, "visual.fullbright", "Fullbright", false, applyFullbright)
 	C.toggle(p, "visual.removeFog", "Remove Fog", false, function(v) ModMenu.Features.Visual.removeFog(v) end)
 	C.slider(p, "visual.fov", "Field of View", 40, 120, 70, function(v) ModMenu.Features.Visual.setFOV(v) end)
 	C.slider(p, "visual.clock", "Clock Time", 0, 24, 14, function(v) ModMenu.Features.Visual.setClockTime(v) end)
@@ -3463,7 +3606,9 @@ do
 		pcall(ModMenu.Config.save, true)
 		ModMenu.Notify("Settings", "Saved")
 	end)
-	C.button(p, "Reset Toggles Now", function()
+	-- Turn every feature toggle off (runs each off-handler so the effect is
+	-- reverted) and bring the toggle widgets back in sync with the state.
+	local function setFeatureTogglesOff()
 		for id, callbacks in ModMenu.UI.toggleApply do
 			if not isPreference(id) and ModMenu.State.toggles[id] then
 				ModMenu.State.toggles[id] = false
@@ -3479,19 +3624,24 @@ do
 				end
 			end
 		end
+	end
+	C.button(p, "Reset Toggles Now", function()
+		setFeatureTogglesOff()
 		pcall(ModMenu.Config.save)
 		ModMenu.Notify("Settings", "All feature toggles turned off")
 	end)
 	C.button(p, "Wipe Saved Config", function()
+		-- Wiping clears the in-memory toggle table, so any feature that was
+		-- running has to be stopped first -- otherwise it keeps running with
+		-- no toggle left to turn it off.
+		setFeatureTogglesOff()
 		pcall(ModMenu.Config.wipe)
-		-- Config.wipe() reseeded the defaults in memory; bring the Settings UI
-		-- (preference toggles, open-key dropdown, background) back in sync.
+		-- Config.wipe() reseeded the defaults in memory; bring every toggle
+		-- widget (preferences and features) back in sync with the new state.
 		for id, syncers in ModMenu.UI.toggleSync do
-			if isPreference(id) then
-				local v = ModMenu.State.toggles[id] == true
-				for _, sync in syncers do
-					pcall(sync, v)
-				end
+			local v = ModMenu.State.toggles[id] == true
+			for _, sync in syncers do
+				pcall(sync, v)
 			end
 		end
 		local keyset = ModMenu.UI.dropdownSet["settings.openKey"]

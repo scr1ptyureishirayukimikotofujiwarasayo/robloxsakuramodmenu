@@ -10,6 +10,13 @@ local function isPreference(id: string): boolean
 	return string.sub(id, 1, 9) == "settings."
 end
 
+-- Shared by the Home shortcut and the Visual tab entry: both use the id
+-- "visual.fullbright", so they must register the SAME callback (the UI
+-- registry keeps one entry per distinct callback for an id).
+local function applyFullbright(v: boolean)
+	ModMenu.Features.Visual.fullbright(v)
+end
+
 -- Home
 do
 	local p = Panels.home
@@ -26,7 +33,7 @@ do
 	T.textStroke(info, 0.65)
 	C.section(p, "Quick Actions")
 	C.button(p, "Copy Position", function() ModMenu.Features.Teleport.copyPosition() end)
-	C.toggle(p, "visual.fullbright", "Fullbright", false, function(v) ModMenu.Features.Visual.fullbright(v) end)
+	C.toggle(p, "visual.fullbright", "Fullbright", false, applyFullbright)
 end
 
 -- Player
@@ -57,7 +64,7 @@ end
 do
 	local p = Panels.visual
 	C.toggle(p, "visual.esp", "Player ESP (Highlight)", false, function(v) ModMenu.Features.Visual.esp(v) end)
-	C.toggle(p, "visual.fullbright", "Fullbright", false, function(v) ModMenu.Features.Visual.fullbright(v) end)
+	C.toggle(p, "visual.fullbright", "Fullbright", false, applyFullbright)
 	C.toggle(p, "visual.removeFog", "Remove Fog", false, function(v) ModMenu.Features.Visual.removeFog(v) end)
 	C.slider(p, "visual.fov", "Field of View", 40, 120, 70, function(v) ModMenu.Features.Visual.setFOV(v) end)
 	C.slider(p, "visual.clock", "Clock Time", 0, 24, 14, function(v) ModMenu.Features.Visual.setClockTime(v) end)
@@ -189,7 +196,9 @@ do
 		pcall(ModMenu.Config.save, true)
 		ModMenu.Notify("Settings", "Saved")
 	end)
-	C.button(p, "Reset Toggles Now", function()
+	-- Turn every feature toggle off (runs each off-handler so the effect is
+	-- reverted) and bring the toggle widgets back in sync with the state.
+	local function setFeatureTogglesOff()
 		for id, callbacks in ModMenu.UI.toggleApply do
 			if not isPreference(id) and ModMenu.State.toggles[id] then
 				ModMenu.State.toggles[id] = false
@@ -205,19 +214,24 @@ do
 				end
 			end
 		end
+	end
+	C.button(p, "Reset Toggles Now", function()
+		setFeatureTogglesOff()
 		pcall(ModMenu.Config.save)
 		ModMenu.Notify("Settings", "All feature toggles turned off")
 	end)
 	C.button(p, "Wipe Saved Config", function()
+		-- Wiping clears the in-memory toggle table, so any feature that was
+		-- running has to be stopped first -- otherwise it keeps running with
+		-- no toggle left to turn it off.
+		setFeatureTogglesOff()
 		pcall(ModMenu.Config.wipe)
-		-- Config.wipe() reseeded the defaults in memory; bring the Settings UI
-		-- (preference toggles, open-key dropdown, background) back in sync.
+		-- Config.wipe() reseeded the defaults in memory; bring every toggle
+		-- widget (preferences and features) back in sync with the new state.
 		for id, syncers in ModMenu.UI.toggleSync do
-			if isPreference(id) then
-				local v = ModMenu.State.toggles[id] == true
-				for _, sync in syncers do
-					pcall(sync, v)
-				end
+			local v = ModMenu.State.toggles[id] == true
+			for _, sync in syncers do
+				pcall(sync, v)
 			end
 		end
 		local keyset = ModMenu.UI.dropdownSet["settings.openKey"]

@@ -29,7 +29,9 @@ ModMenu.Features.Misc.hideAllGuis = function(enabled: boolean)
 	-- actually disabled are re-enabled, so a GUI that started disabled stays off.
 	local id = "misc.hideGuis"
 	ModMenu.State.clearConnections(id)
-	local pg = S.Players.LocalPlayer:FindFirstChild("PlayerGui")
+	local lp = S.Players.LocalPlayer
+	if not lp then return end
+	local pg = lp:FindFirstChild("PlayerGui")
 	if not pg then return end
 	if enabled then
 		for _, child in pg:GetChildren() do

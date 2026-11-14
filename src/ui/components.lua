@@ -92,8 +92,24 @@ local function toggle(parent: Instance, id: string, label: string, initial: bool
 	-- target, Dex "closed", ...). Register the callback instead; init.luau
 	-- re-applies only the toggles the user actually saved as ON.
 	if apply then
-		ModMenu.UI.toggleApply[id] = ModMenu.UI.toggleApply[id] or {}
-		table.insert(ModMenu.UI.toggleApply[id], apply)
+		local list = ModMenu.UI.toggleApply[id]
+		if not list then
+			list = {}
+			ModMenu.UI.toggleApply[id] = list
+		end
+		-- The same id can appear on two panels (Home + Visual "Fullbright").
+		-- Registering the identical callback twice would apply the feature
+		-- twice on every reset/restore, so keep only one copy of it.
+		local already = false
+		for _, existing in list do
+			if existing == apply then
+				already = true
+				break
+			end
+		end
+		if not already then
+			table.insert(list, apply)
+		end
 	end
 
 	return row
