@@ -34,20 +34,22 @@ ModMenu.Features.Character.platformStand = function(enabled: boolean)
 	end
 end
 
-ModMenu.Features.Character.view = function(tagetName: string?)
+ModMenu.Features.Character.view = function(targetName: string?)
 	local camera = S.Workspace.CurrentCamera
 	if not camera then return end
-	if not tagetName or tagetName == "" then
+	if not targetName or targetName == "" then
 		if S.Players.LocalPlayer.Character then
 			local h = S.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 			if h then camera.CameraSubject = h end
 		end
 		return
 	end
-	local target = S.Players:FindFirstChild(tagetName)
+	local target = S.Players:FindFirstChild(targetName)
 	if target and target.Character then
 		local h = target.Character:FindFirstChildOfClass("Humanoid")
 		if h then camera.CameraSubject = h end
+	else
+		ModMenu.Notify("View", "Player not found: " .. targetName)
 	end
 end
 

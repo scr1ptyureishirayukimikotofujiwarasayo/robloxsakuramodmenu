@@ -120,6 +120,34 @@ do
 	end
 end
 
+removedInvisParts = {}
+fogOriginal = nil
+oofing = false
+
+function restoreInvisParts()
+	if type(removedInvisParts) == "table" then
+		for part, saved in pairs(removedInvisParts) do
+			if part and part.Parent == nil and saved then
+				pcall(function()
+					part.Parent = saved.parent
+					part.CFrame = saved.cframe
+				end)
+			end
+		end
+		removedInvisParts = {}
+	end
+end
+
+function restoreFog()
+	if type(fogOriginal) == "table" then
+		pcall(function()
+			gsLighting.FogStart = fogOriginal.start
+			gsLighting.FogEnd = fogOriginal.fogEnd
+		end)
+		fogOriginal = nil
+	end
+end
+
 -- Important Functions
 function view(plr)
 	if plr.Character.Humanoid ~= nil then
@@ -2451,20 +2479,37 @@ Commands.prefix = function(args)
 end
 
 Commands.removeinvis = function(args)
+	removedInvisParts = removedInvisParts or {}
 	for i,v in pairs(gsWorkspace:GetDescendants()) do
 		if v:IsA("Part") and v.Name ~= "HumanoidRootPart" then
 			if v.Transparency == 1 then
-				v:Destroy()
+				if removedInvisParts[v] == nil then
+					removedInvisParts[v] = { parent = v.Parent, cframe = v.CFrame }
+					v.Parent = nil
+				end
 			end
 		end
 	end
 	clientSided()
+	Notification("info", "Invisible parts removed. Use "..commandPrefix.."unremoveinvis to restore.", 5)
+end
+
+Commands.unremoveinvis = function(args)
+	restoreInvisParts()
 end
 
 Commands.removefog = function(args)
+	if fogOriginal == nil then
+		fogOriginal = { start = gsLighting.FogStart, fogEnd = gsLighting.FogEnd }
+	end
 	gsLighting.FogStart = 0
 	gsLighting.FogEnd = 9999999999999
 	clientSided()
+	Notification("info", "Fog removed. Use "..commandPrefix.."unremovefog to restore.", 5)
+end
+
+Commands.unremovefog = function(args)
+	restoreFog()
 end
 
 Commands.animation = function(args)
@@ -2742,8 +2787,9 @@ Commands.unclickdel = function(args)
 end
 
 Commands.oof = function(args)
+	oofing = true
 	task.spawn(function()
-		while task.wait() do
+		while oofing and task.wait() do
 		   for i,v in pairs(game:GetService'Players':GetPlayers()) do
 		       if v.Character ~= nil and v.Character:FindFirstChild'Head' then
 		           for _,x in pairs(v.Character.Head:GetChildren()) do
@@ -2753,6 +2799,10 @@ Commands.oof = function(args)
 		   end
 		end
 	end)
+end
+
+Commands.unoof = function(args)
+	oofing = false
 end
 
 Commands.chatlogs = function(args)
@@ -2773,6 +2823,10 @@ Commands.stopadmin = function(args)
 	spamming = false
 	spammingpm = false
 	spinning = false
+	oofing = false
+	stutterON = false
+	restoreInvisParts()
+	restoreFog()
 	if CMDBAR then CMDBAR.Visible = false end
 	if Match then Match.Visible = false end
 	local ok, env = pcall(function() return getgenv() end)
@@ -4059,6 +4113,10 @@ do
 		loopviewfc = false
 		cmdForward = false
 		rideACTIVE = false
+		oofing = false
+		stutterON = false
+		restoreInvisParts()
+		restoreFog()
 		if type(env.ShatterVastRestoreNamecall) == "function" then
 			pcall(env.ShatterVastRestoreNamecall)
 		end

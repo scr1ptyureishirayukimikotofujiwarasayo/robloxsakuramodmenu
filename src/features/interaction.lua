@@ -9,7 +9,8 @@ ModMenu.Features = ModMenu.Features or {}
 ModMenu.Features.Interaction = {}
 
 local function root(): BasePart?
-	local c = Players.LocalPlayer.Character
+	local lp = Players.LocalPlayer
+	local c = lp and lp.Character
 	return if c then c:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 end
 

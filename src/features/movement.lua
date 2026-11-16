@@ -220,7 +220,7 @@ ModMenu.Features.Movement.setHipHeight = function(value: number)
 end
 
 ModMenu.Features.Movement.clickTeleport = function(enabled: boolean)
-	local id = "movement.clicktp"
+	local id = "utility.clickTP" -- match the UI toggle id in init.luau
 	ModMenu.State.clearConnections(id)
 	if not enabled then return end
 	local mouse = S.Players.LocalPlayer:GetMouse()
@@ -284,6 +284,7 @@ ModMenu.Features.Movement.resetMovement = function()
 	-- Forget custom slider values so a respawn does not re-apply them.
 	ModMenu.State.touched["player.walkspeed"] = nil
 	ModMenu.State.touched["player.jumppower"] = nil
+	ModMenu.State.touched["player.gravity"] = nil
 	ModMenu.State.touched["character.hipHeight"] = nil
 	ModMenu.Features.Movement.setGravity(196.2)
 	-- Keep the sliders showing the values we just restored.

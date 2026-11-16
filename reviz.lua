@@ -160,6 +160,10 @@ Commands = {
     '[129] unlogchat -- Disables logchat',
     '[130] fixcam -- Fixes/resets your camera',
     '[131] unstate -- Stops changing state',
+    '[132] unbringobj -- Stops bringobj',
+    '[133] unbringmod -- Stops bringmod',
+    '[134] unremoveinvis -- Restores parts hidden by removeinvis',
+    '[135] unremovefog -- Restores fog after removefog',
 }
 
 -- ============================================================
@@ -381,12 +385,40 @@ end
 
 local revizAlive = true
 
+local function restoreInvisParts()
+    if type(removedInvisParts) == "table" then
+        for part, saved in pairs(removedInvisParts) do
+            if part and part.Parent == nil and saved then
+                pcall(function()
+                    part.Parent = saved.parent
+                    part.CFrame = saved.cframe
+                end)
+            end
+        end
+        removedInvisParts = {}
+    end
+end
+
+local function restoreFog()
+    if type(fogOriginal) == "table" then
+        pcall(function()
+            game:GetService("Lighting").FogStart = fogOriginal.start
+            game:GetService("Lighting").FogEnd = fogOriginal.fogEnd
+        end)
+        fogOriginal = nil
+    end
+end
+
 RevizEnv.RevizAdminUnload = function()
     revizAlive = false
     spamming = false
     spammingpm = false
     cbring = false
     cbringall = false
+    bringobjing = false
+    bringmoding = false
+    restoreInvisParts()
+    restoreFog()
     for _, connection in ipairs(revizConnections) do
         pcall(function() connection:Disconnect() end)
     end
@@ -480,6 +512,12 @@ chatlogs = false
 banpl = false
 changingstate = false
 statechosen = 0
+bringobjing = false
+bringobjName = nil
+bringmoding = false
+bringmodName = nil
+removedInvisParts = {}
+fogOriginal = nil
  
 adminversion = "SakuraVibes999's Reviz Admin by sakuravibes999, Version 2.0"
  
@@ -1312,27 +1350,18 @@ local function Execute(msg)
         lplayer.Character.Humanoid.Sit = true
     end
     if string.sub(msg, 1, 10) == (prefix.."bringobj ") then
-        local function bringobjw()
-        for i,obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
-        if obj.Name == (string.sub(msg, 11)) and obj:IsA("BasePart") then
-        obj.CFrame = lplayer.Character.HumanoidRootPart.CFrame
-        obj.CanCollide = false
-        obj.Transparency = 0.7
-        task.wait()
-        obj.CFrame = limb(lplayer.Character, "Left Leg").CFrame
-        task.wait()
-        obj.CFrame = limb(lplayer.Character, "Right Leg").CFrame
-        task.wait()
-        obj.CFrame = lplayer.Character["Head"].CFrame
-        end
-        end
-        end
-        while task.wait() do
-            bringobjw()
-        end
+        bringobjName = string.sub(msg, 11)
+        bringobjing = true
         safeSetCore("SendNotification", {
         Title = "BringObj";
-        Text = "BringObj enabled.";
+        Text = "BringObj enabled. Type ;unbringobj to disable.";
+        })
+    end
+    if string.sub(msg, 1, 11) == (prefix.."unbringobj") then
+        bringobjing = false
+        safeSetCore("SendNotification", {
+        Title = "BringObj";
+        Text = "BringObj disabled.";
         })
     end
     if string.sub(msg, 1, 7) == (prefix.."wsvis ") then
@@ -1626,31 +1655,18 @@ local function Execute(msg)
         banpl = false
     end
     if string.sub(msg, 1, 10) == (prefix.."bringmod ") then
-        local function bringmodw()
-        for i,obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
-        if obj.Name == (string.sub(msg, 11)) then
-        for i,ch in pairs(obj:GetDescendants()) do
-        if (ch:IsA("BasePart")) then
-        ch.CFrame = lplayer.Character.HumanoidRootPart.CFrame
-        ch.CanCollide = false
-        ch.Transparency = 0.7
-        task.wait()
-        ch.CFrame = limb(lplayer.Character, "Left Leg").CFrame
-        task.wait()
-        ch.CFrame = limb(lplayer.Character, "Right Leg").CFrame
-        task.wait()
-        ch.CFrame = lplayer.Character["Head"].CFrame
-        end
-        end
-        end
-        end
-        end
-        while task.wait() do
-            bringmodw()
-        end
+        bringmodName = string.sub(msg, 11)
+        bringmoding = true
         safeSetCore("SendNotification", {
         Title = "BringMod";
-        Text = "BringMod enabled.";
+        Text = "BringMod enabled. Type ;unbringmod to disable.";
+        })
+    end
+    if string.sub(msg, 1, 11) == (prefix.."unbringmod") then
+        bringmoding = false
+        safeSetCore("SendNotification", {
+        Title = "BringMod";
+        Text = "BringMod disabled.";
         })
     end
     if string.sub(msg, 1, 8) == (prefix.."respawn") then
@@ -1949,19 +1965,41 @@ local function Execute(msg)
         end
     end
     if string.sub(msg, 1, 12) == (prefix.."removeinvis") then
+        removedInvisParts = removedInvisParts or {}
         for i,v in pairs(game:GetService("Workspace"):GetDescendants()) do
             if v:IsA("Part") then
                 if v.Transparency == 1 then
                     if v.Name ~= "HumanoidRootPart" then
-                        v:Destroy()
+                        if removedInvisParts[v] == nil then
+                            removedInvisParts[v] = { parent = v.Parent, cframe = v.CFrame }
+                            v.Parent = nil
+                        end
                     end
                 end
             end
         end
+        safeSetCore("SendNotification", {
+        Title = "RemoveInvis";
+        Text = "Invisible parts removed. Type ;unremoveinvis to restore.";
+        })
+    end
+    if string.sub(msg, 1, 14) == (prefix.."unremoveinvis") then
+        restoreInvisParts()
     end
     if string.sub(msg, 1, 10) == (prefix.."removefog") then
-        game:GetService("Lighting").FogStart = 0
-        game:GetService("Lighting").FogEnd = 9999999999999
+        local lighting = game:GetService("Lighting")
+        if fogOriginal == nil then
+            fogOriginal = { start = lighting.FogStart, fogEnd = lighting.FogEnd }
+        end
+        lighting.FogStart = 0
+        lighting.FogEnd = 9999999999999
+        safeSetCore("SendNotification", {
+        Title = "RemoveFog";
+        Text = "Fog removed. Type ;unremovefog to restore.";
+        })
+    end
+    if string.sub(msg, 1, 11) == (prefix.."unremovefog") then
+        restoreFog()
     end
     if string.sub(msg, 1, 8) == (prefix.."disable") then
         lplayer.Character.Humanoid.Parent = lplayer
@@ -2093,6 +2131,48 @@ task.spawn(function()
     while revizAlive and task.wait() do
         if cbringall == true then
             tpall()
+        end
+    end
+end)
+task.spawn(function()
+    while revizAlive and task.wait() do
+        if bringobjing == true and bringobjName then
+            for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
+                if obj.Name == bringobjName and obj:IsA("BasePart") then
+                    obj.CFrame = lplayer.Character.HumanoidRootPart.CFrame
+                    obj.CanCollide = false
+                    obj.Transparency = 0.7
+                    task.wait()
+                    obj.CFrame = limb(lplayer.Character, "Left Leg").CFrame
+                    task.wait()
+                    obj.CFrame = limb(lplayer.Character, "Right Leg").CFrame
+                    task.wait()
+                    obj.CFrame = lplayer.Character["Head"].CFrame
+                end
+            end
+        end
+    end
+end)
+task.spawn(function()
+    while revizAlive and task.wait() do
+        if bringmoding == true and bringmodName then
+            for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
+                if obj.Name == bringmodName then
+                    for _, ch in pairs(obj:GetDescendants()) do
+                        if ch:IsA("BasePart") then
+                            ch.CFrame = lplayer.Character.HumanoidRootPart.CFrame
+                            ch.CanCollide = false
+                            ch.Transparency = 0.7
+                            task.wait()
+                            ch.CFrame = limb(lplayer.Character, "Left Leg").CFrame
+                            task.wait()
+                            ch.CFrame = limb(lplayer.Character, "Right Leg").CFrame
+                            task.wait()
+                            ch.CFrame = lplayer.Character["Head"].CFrame
+                        end
+                    end
+                end
+            end
         end
     end
 end)

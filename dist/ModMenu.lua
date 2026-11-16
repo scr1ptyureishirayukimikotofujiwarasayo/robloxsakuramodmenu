@@ -1604,7 +1604,7 @@ ModMenu.Features.Movement.setHipHeight = function(value: number)
 end
 
 ModMenu.Features.Movement.clickTeleport = function(enabled: boolean)
-	local id = "movement.clicktp"
+	local id = "utility.clickTP" -- match the UI toggle id in init.luau
 	ModMenu.State.clearConnections(id)
 	if not enabled then return end
 	local mouse = S.Players.LocalPlayer:GetMouse()
@@ -1668,6 +1668,7 @@ ModMenu.Features.Movement.resetMovement = function()
 	-- Forget custom slider values so a respawn does not re-apply them.
 	ModMenu.State.touched["player.walkspeed"] = nil
 	ModMenu.State.touched["player.jumppower"] = nil
+	ModMenu.State.touched["player.gravity"] = nil
 	ModMenu.State.touched["character.hipHeight"] = nil
 	ModMenu.Features.Movement.setGravity(196.2)
 	-- Keep the sliders showing the values we just restored.
@@ -1860,20 +1861,22 @@ ModMenu.Features.Character.platformStand = function(enabled: boolean)
 	end
 end
 
-ModMenu.Features.Character.view = function(tagetName: string?)
+ModMenu.Features.Character.view = function(targetName: string?)
 	local camera = S.Workspace.CurrentCamera
 	if not camera then return end
-	if not tagetName or tagetName == "" then
+	if not targetName or targetName == "" then
 		if S.Players.LocalPlayer.Character then
 			local h = S.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 			if h then camera.CameraSubject = h end
 		end
 		return
 	end
-	local target = S.Players:FindFirstChild(tagetName)
+	local target = S.Players:FindFirstChild(targetName)
 	if target and target.Character then
 		local h = target.Character:FindFirstChildOfClass("Humanoid")
 		if h then camera.CameraSubject = h end
+	else
+		ModMenu.Notify("View", "Player not found: " .. targetName)
 	end
 end
 
@@ -2759,7 +2762,8 @@ ModMenu.Features = ModMenu.Features or {}
 ModMenu.Features.Interaction = {}
 
 local function root(): BasePart?
-	local c = Players.LocalPlayer.Character
+	local lp = Players.LocalPlayer
+	local c = lp and lp.Character
 	return if c then c:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 end
 
