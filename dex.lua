@@ -46,6 +46,7 @@ local function main()
 	local idCounter = 0
 	local scrollV,scrollH,selection,clipboard
 	local renameBox,renamingNode,searchFunc
+	local searchStats = {Matches = 0, Nodes = {}, Current = 0, Valid = true}
 	local sortingEnabled,autoUpdateSearch
 	local table,math = table,math
 	local nilMap,nilCons = {},{}
@@ -139,6 +140,7 @@ local function main()
 
 		if searchFunc and autoUpdateSearch then
 			searchFunc({newNode})
+			Explorer.UpdateSearchStatus()
 		end
 
 		if not updateDebounce and Explorer.IsNodeVisible(par) then
@@ -319,7 +321,7 @@ local function main()
 		scrollH.Gui.Visible = totalWidth > maxX
 
 		local oldSize = treeFrame.Size
-		treeFrame.Size = UDim2.new(1,(scrollV.Gui.Visible and -16 or 0),1,(scrollH.Gui.Visible and -39 or -23))
+		treeFrame.Size = UDim2.new(1,(scrollV.Gui.Visible and -16 or 0),1,(scrollH.Gui.Visible and -63 or -47))
 		if oldSize ~= treeFrame.Size then
 			Explorer.UpdateView()
 		else
@@ -329,11 +331,11 @@ local function main()
 			renameBox.Size = UDim2.new(0,maxX-100,0,16)
 
 			if scrollV.Gui.Visible and scrollH.Gui.Visible then
-				scrollV.Gui.Size = UDim2.new(0,16,1,-39)
+				scrollV.Gui.Size = UDim2.new(0,16,1,-63)
 				scrollH.Gui.Size = UDim2.new(1,-16,0,16)
 				Explorer.Window.GuiElems.Content.ScrollCorner.Visible = true
 			else
-				scrollV.Gui.Size = UDim2.new(0,16,1,-23)
+				scrollV.Gui.Size = UDim2.new(0,16,1,-47)
 				scrollH.Gui.Size = UDim2.new(1,0,0,16)
 				Explorer.Window.GuiElems.Content.ScrollCorner.Visible = false
 			end
@@ -1713,6 +1715,7 @@ local searchResults = searchResults
 local nodes = nodes
 local expandTable = Explorer.SearchExpanded
 local specResults = specResults
+local searchStats = searchStats
 local service = service
 
 %s
@@ -1729,6 +1732,8 @@ local function search(root)
 		if %s then
 			expandTable[node] = 0
 			searchResults[node] = true
+			searchStats.Matches = searchStats.Matches + 1
+			searchStats.Nodes[#searchStats.Nodes + 1] = node
 			if not expandedpar then
 				local parnode = node.Parent
 				while parnode and (not searchResults[parnode] or expandTable[parnode] == 0) do
@@ -1750,13 +1755,75 @@ return search]==]
 		if not s or not func then return nil,specFilterList end
 
 		local env = setmetatable({["searchResults"] = searchResults, ["nodes"] = nodes, ["Explorer"] = Explorer, ["specResults"] = specResults,
-			["service"] = service},{__index = getfenv()})
+			["searchStats"] = searchStats, ["service"] = service},{__index = getfenv()})
 		setfenv(func,env)
 
 		return func(),specFilterList
 	end
 
+	Explorer.UpdateSearchStatus = function()
+		local status = Explorer.GuiElems.SearchStatus
+		if not status then return end
+
+		local query = Explorer.GuiElems.SearchBar and Explorer.GuiElems.SearchBar.Text or ""
+		if #query == 0 then
+			status.Text = "Ctrl+F: search  |  /isa Part  /remotes  /rad 50"
+		elseif not searchStats.Valid then
+			status.Text = "Invalid search query"
+		elseif searchStats.Matches == 0 then
+			status.Text = "No matches"
+		elseif searchStats.Current > 0 then
+			status.Text = string.format("Match %d/%d  |  F3 next, Shift+F3 previous",searchStats.Current,searchStats.Matches)
+		else
+			status.Text = string.format("%d match%s  |  F3 next, Shift+F3 previous",searchStats.Matches,searchStats.Matches == 1 and "" or "es")
+		end
+	end
+
+	Explorer.ViewSearchResult = function(step)
+		local count = #searchStats.Nodes
+		if count == 0 then return end
+
+		local index = searchStats.Current
+		for _ = 1,count do
+			if index == 0 then
+				index = step < 0 and count or 1
+			else
+				index = (index - 1 + step) % count + 1
+			end
+
+			local node = searchStats.Nodes[index]
+			if node and not node.Del and nodes[node.Obj] == node then
+				searchStats.Current = index
+				selection:Set(node)
+				Explorer.ViewNode(node)
+				Explorer.UpdateSearchStatus()
+				return
+			end
+		end
+	end
+
+	Explorer.ExpandSelection = function(expand)
+		local targets = selection.List
+		if #targets == 0 then targets = {nodes[game]} end
+
+		local function setExpanded(node)
+			if expand or node ~= nodes[game] then
+				expanded[node] = expand or nil
+			end
+			for i = 1,#node do
+				setExpanded(node[i])
+			end
+		end
+
+		for i = 1,#targets do setExpanded(targets[i]) end
+		Explorer.ForceUpdate()
+	end
+
 	Explorer.DoSearch = function(query)
+		searchStats.Matches = 0
+		searchStats.Current = 0
+		searchStats.Valid = true
+		table.clear(searchStats.Nodes)
 		table.clear(Explorer.SearchExpanded)
 		table.clear(searchResults)
 		expanded = (#query == 0 and Explorer.Expanded or Explorer.SearchExpanded)
@@ -1781,6 +1848,8 @@ return search]==]
 					if find(lower(tostring(obj)),lowerQuery,1,true) then
 						expandTable[node] = 0
 						searchResults[node] = true
+						searchStats.Matches = searchStats.Matches + 1
+						searchStats.Nodes[#searchStats.Nodes + 1] = node
 						if not expandedpar then
 							local parnode = node.Parent
 							while parnode and (not searchResults[parnode] or expandTable[parnode] == 0) do
@@ -1824,27 +1893,80 @@ return search]==]
 				searchFunc(nodes[game])
 				searchFunc(nilNode)
 				--warn(tick()-start)
+			else
+				searchStats.Valid = false
 			end
 		end
 
 		Explorer.ForceUpdate()
+		Explorer.UpdateSearchStatus()
 	end
 
 	Explorer.ClearSearch = function()
 		Explorer.GuiElems.SearchBar.Text = ""
-		expanded = Explorer.Expanded
-		searchFunc = nil
+		Explorer.DoSearch("")
 	end
 
 	Explorer.InitSearch = function()
 		local searchBox = Explorer.GuiElems.ToolBar.SearchFrame.SearchBox
 		Explorer.GuiElems.SearchBar = searchBox
+		Explorer.GuiElems.SearchStatus = Explorer.GuiElems.ToolBar.NavigationBar.SearchStatus
 
 		Lib.ViewportTextBox.convert(searchBox)
 
-		searchBox.FocusLost:Connect(function()
+		local searchVersion = 0
+		local function searchNow()
+			searchVersion = searchVersion + 1
 			Explorer.DoSearch(searchBox.Text)
+		end
+
+		searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+			if not searchBox:IsFocused() then return end
+			searchVersion = searchVersion + 1
+			local version = searchVersion
+			coroutine.wrap(function()
+				Lib.FastWait(0.25)
+				if version == searchVersion then Explorer.DoSearch(searchBox.Text) end
+			end)()
 		end)
+
+		searchBox.FocusLost:Connect(searchNow)
+		searchBox.InputBegan:Connect(function(input)
+			if input.KeyCode == Enum.KeyCode.Escape then
+				searchVersion = searchVersion + 1
+				Explorer.ClearSearch()
+				searchBox:ReleaseFocus()
+			elseif input.KeyCode == Enum.KeyCode.Return then
+				searchNow()
+				searchBox:ReleaseFocus()
+			elseif input.KeyCode == Enum.KeyCode.F3 then
+				local backwards = service.UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or service.UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+				Explorer.ViewSearchResult(backwards and -1 or 1)
+			end
+		end)
+
+		toolBar.SearchFrame.Reset.MouseButton1Click:Connect(function()
+			searchVersion = searchVersion + 1
+			Explorer.ClearSearch()
+			searchBox:CaptureFocus()
+		end)
+		toolBar.NavigationBar.PreviousResult.MouseButton1Click:Connect(function() Explorer.ViewSearchResult(-1) end)
+		toolBar.NavigationBar.NextResult.MouseButton1Click:Connect(function() Explorer.ViewSearchResult(1) end)
+		toolBar.NavigationBar.Expand.MouseButton1Click:Connect(function() Explorer.ExpandSelection(true) end)
+		toolBar.NavigationBar.Collapse.MouseButton1Click:Connect(function() Explorer.ExpandSelection(false) end)
+
+		service.UserInputService.InputBegan:Connect(function(input,gameProcessed)
+			if gameProcessed then return end
+			if input.KeyCode == Enum.KeyCode.F and Explorer.Active and not service.UserInputService:GetFocusedTextBox()
+				and (service.UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or service.UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
+				searchBox:CaptureFocus()
+			elseif input.KeyCode == Enum.KeyCode.F3 and Explorer.Active and not service.UserInputService:GetFocusedTextBox() then
+				local backwards = service.UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or service.UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+				Explorer.ViewSearchResult(backwards and -1 or 1)
+			end
+		end)
+
+		Explorer.UpdateSearchStatus()
 	end
 
 	Explorer.InitEntryTemplate = function()
@@ -2100,16 +2222,22 @@ return search]==]
 
 		local explorerItems = create({
 			{1,"Folder",{Name="ExplorerItems",}},
-			{2,"Frame",{BackgroundColor3=Color3.new(0.20392157137394,0.20392157137394,0.20392157137394),BorderSizePixel=0,Name="ToolBar",Parent={1},Size=UDim2.new(1,0,0,22),}},
+			{2,"Frame",{BackgroundColor3=Color3.new(0.20392157137394,0.20392157137394,0.20392157137394),BorderSizePixel=0,Name="ToolBar",Parent={1},Size=UDim2.new(1,0,0,46),}},
 			{3,"Frame",{BackgroundColor3=Color3.new(0.14901961386204,0.14901961386204,0.14901961386204),BorderColor3=Color3.new(0.1176470592618,0.1176470592618,0.1176470592618),BorderSizePixel=0,Name="SearchFrame",Parent={2},Position=UDim2.new(0,3,0,1),Size=UDim2.new(1,-6,0,18),}},
-			{4,"TextBox",{BackgroundColor3=Color3.new(1,1,1),BackgroundTransparency=1,ClearTextOnFocus=false,Font=3,Name="SearchBox",Parent={3},PlaceholderColor3=Color3.new(0.39215689897537,0.39215689897537,0.39215689897537),PlaceholderText="Search workspace",Position=UDim2.new(0,4,0,0),Size=UDim2.new(1,-24,0,18),Text="",TextColor3=Color3.new(1,1,1),TextSize=14,TextXAlignment=0,}},
+			{4,"TextBox",{BackgroundColor3=Color3.new(1,1,1),BackgroundTransparency=1,ClearTextOnFocus=false,Font=3,Name="SearchBox",Parent={3},PlaceholderColor3=Color3.new(0.39215689897537,0.39215689897537,0.39215689897537),PlaceholderText="Name, /isa Part, /remotes, /rad 50",Position=UDim2.new(0,4,0,0),Size=UDim2.new(1,-24,0,18),Text="",TextColor3=Color3.new(1,1,1),TextSize=14,TextXAlignment=0,}},
 			{5,"UICorner",{CornerRadius=UDim.new(0,2),Parent={3},}},
 			{6,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.12549020349979,0.12549020349979,0.12549020349979),BackgroundTransparency=1,BorderSizePixel=0,Font=3,Name="Reset",Parent={3},Position=UDim2.new(1,-17,0,1),Size=UDim2.new(0,16,0,16),Text="",TextColor3=Color3.new(1,1,1),TextSize=14,}},
 			{7,"ImageLabel",{BackgroundColor3=Color3.new(1,1,1),BackgroundTransparency=1,Image="rbxassetid://5034718129",ImageColor3=Color3.new(0.39215686917305,0.39215686917305,0.39215686917305),Parent={6},Size=UDim2.new(0,16,0,16),}},
 			{8,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.12549020349979,0.12549020349979,0.12549020349979),BackgroundTransparency=1,BorderSizePixel=0,Font=3,Name="Refresh",Parent={2},Position=UDim2.new(1,-20,0,1),Size=UDim2.new(0,18,0,18),Text="",TextColor3=Color3.new(1,1,1),TextSize=14,Visible=false,}},
 			{9,"ImageLabel",{BackgroundColor3=Color3.new(1,1,1),BackgroundTransparency=1,Image="rbxassetid://5642310344",Parent={8},Position=UDim2.new(0,3,0,3),Size=UDim2.new(0,12,0,12),}},
 			{10,"Frame",{BackgroundColor3=Color3.new(0.15686275064945,0.15686275064945,0.15686275064945),BorderSizePixel=0,Name="ScrollCorner",Parent={1},Position=UDim2.new(1,-16,1,-16),Size=UDim2.new(0,16,0,16),Visible=false,}},
-			{11,"Frame",{BackgroundColor3=Color3.new(1,1,1),BackgroundTransparency=1,ClipsDescendants=true,Name="List",Parent={1},Position=UDim2.new(0,0,0,23),Size=UDim2.new(1,0,1,-23),}},
+			{11,"Frame",{BackgroundColor3=Color3.new(1,1,1),BackgroundTransparency=1,ClipsDescendants=true,Name="List",Parent={1},Position=UDim2.new(0,0,0,47),Size=UDim2.new(1,0,1,-47),}},
+			{12,"Frame",{BackgroundColor3=Color3.new(0.17647058823529,0.17647058823529,0.17647058823529),BorderSizePixel=0,Name="NavigationBar",Parent={2},Position=UDim2.new(0,0,0,22),Size=UDim2.new(1,0,0,24),}},
+			{13,"TextLabel",{BackgroundTransparency=1,Font=3,Name="SearchStatus",Parent={12},Position=UDim2.new(0,6,0,2),Size=UDim2.new(1,-150,0,20),Text="",TextColor3=Color3.new(0.62745098039216,0.62745098039216,0.62745098039216),TextSize=12,TextTruncate=1,TextXAlignment=0,}},
+			{14,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.23529411764706,0.23529411764706,0.23529411764706),BorderSizePixel=0,Font=3,Name="PreviousResult",Parent={12},Position=UDim2.new(1,-145,0,2),Size=UDim2.new(0,22,0,20),Text="<",TextColor3=Color3.new(1,1,1),TextSize=14,}},
+			{15,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.23529411764706,0.23529411764706,0.23529411764706),BorderSizePixel=0,Font=3,Name="NextResult",Parent={12},Position=UDim2.new(1,-121,0,2),Size=UDim2.new(0,22,0,20),Text=">",TextColor3=Color3.new(1,1,1),TextSize=14,}},
+			{16,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.23529411764706,0.23529411764706,0.23529411764706),BorderSizePixel=0,Font=3,Name="Expand",Parent={12},Position=UDim2.new(1,-95,0,2),Size=UDim2.new(0,44,0,20),Text="Expand",TextColor3=Color3.new(1,1,1),TextSize=12,}},
+			{17,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.23529411764706,0.23529411764706,0.23529411764706),BorderSizePixel=0,Font=3,Name="Collapse",Parent={12},Position=UDim2.new(1,-49,0,2),Size=UDim2.new(0,46,0,20),Text="Collapse",TextColor3=Color3.new(1,1,1),TextSize=12,}},
 		})
 
 		toolBar = explorerItems.ToolBar
@@ -2120,7 +2248,7 @@ return search]==]
 
 		scrollV = Lib.ScrollBar.new()		
 		scrollV.WheelIncrement = 3
-		scrollV.Gui.Position = UDim2.new(1,-16,0,23)
+		scrollV.Gui.Position = UDim2.new(1,-16,0,47)
 		scrollV:SetScrollFrame(treeFrame)
 		scrollV.Scrolled:Connect(function()
 			Explorer.Index = scrollV.Index
@@ -2138,7 +2266,7 @@ return search]==]
 		local window = Lib.Window.new()
 		Explorer.Window = window
 		window:SetTitle("Explorer")
-		window.GuiElems.Line.Position = UDim2.new(0,0,0,22)
+		window.GuiElems.Line.Position = UDim2.new(0,0,0,46)
 
 		Explorer.InitEntryTemplate()
 		toolBar.Parent = window.GuiElems.Content
