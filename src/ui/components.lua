@@ -17,7 +17,7 @@ local function button(parent: Instance, text: string, callback: (() -> ())?): Te
 	Theme.textStroke(btn, 0.6)
 	btn.Parent = parent
 	if callback then
-		btn.MouseButton1Click:Connect(function()
+		btn.Activated:Connect(function()
 			pcall(callback)
 		end)
 	end
@@ -72,7 +72,7 @@ local function toggle(parent: Instance, id: string, label: string, initial: bool
 	end
 	table.insert(syncers, selfSyncer)
 
-	btn.MouseButton1Click:Connect(function()
+	btn.Activated:Connect(function()
 		state = not state
 		ModMenu.State.toggles[id] = state
 		refresh()
@@ -147,12 +147,13 @@ local function slider(parent: Instance, id: string, label: string, min: number, 
 
 	local savedNumber = ModMenu.State.numbers[id]
 	local value = if savedNumber ~= nil then savedNumber else (initial or min)
-	local dragging = false
+	local dragInput: InputObject? = nil
+	local range = max - min
 
 	local function render(v: number)
 		value = math.clamp(v, min, max)
 		ModMenu.State.numbers[id] = value
-		local pct = (value - min) / (max - min)
+		local pct = if range > 0 then (value - min) / range else 0
 		fill.Size = UDim2.new(pct, 0, 1, 0)
 		fill.BackgroundColor3 = ModMenu.Theme.accent()
 		lbl.Text = label .. ": " .. string.format("%.1f", value)
@@ -164,24 +165,32 @@ local function slider(parent: Instance, id: string, label: string, min: number, 
 		if apply then pcall(apply, value) end
 	end
 
+	local function updateFromPointer(x: number)
+		local width = bar.AbsoluteSize.X
+		if width <= 0 then return end
+		local pct = math.clamp((x - bar.AbsolutePosition.X) / width, 0, 1)
+		setValue(min + range * pct)
+	end
+
 	local menuConns = ModMenu.State.getConnections("menu")
 	table.insert(menuConns, bar.InputBegan:Connect(function(input)
+		if dragInput then return end
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
+			dragInput = input
+			updateFromPointer(input.Position.X)
 		end
 	end))
 	table.insert(menuConns, S.UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			if dragging then
-				dragging = false
-				pcall(ModMenu.Config.save)
-			end
+		if input == dragInput then
+			dragInput = nil
+			pcall(ModMenu.Config.save)
 		end
 	end))
 	table.insert(menuConns, S.UserInputService.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			local pct = math.clamp((input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
-			setValue(min + (max - min) * pct)
+		local active = dragInput
+		if active and (input == active or (active.UserInputType == Enum.UserInputType.MouseButton1
+			and input.UserInputType == Enum.UserInputType.MouseMovement)) then
+			updateFromPointer(input.Position.X)
 		end
 	end))
 
@@ -306,7 +315,7 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 			b.BorderSizePixel = 0
 			b.Parent = list
 			Theme.textStroke(b, 0.6)
-			b.MouseButton1Click:Connect(function()
+			b.Activated:Connect(function()
 				selected = item
 				btn.Text = selected
 				setOpen(false)
@@ -326,7 +335,7 @@ local function dropdown(parent: Instance, id: string, label: string, items: { st
 		btn.Text = v
 	end
 
-	btn.MouseButton1Click:Connect(function()
+	btn.Activated:Connect(function()
 		if not open and ModMenu.UI.hideDropdowns then
 			ModMenu.UI.hideDropdowns() -- only one dropdown open at a time
 		end

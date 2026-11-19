@@ -410,7 +410,7 @@ for i, cat in categories do
 	btn.Parent = sidebar
 	Theme.textStroke(btn, 0.55)
 	ModMenu.Menu.Buttons[cat.id] = btn
-	btn.MouseButton1Click:Connect(function() switchTab(cat.id) end)
+	btn.Activated:Connect(function() switchTab(cat.id) end)
 	makePanel(cat.id)
 end
 
@@ -428,24 +428,25 @@ Theme.corner(floating, 22)
 Theme.textStroke(floating, 0.45)
 ModMenu.Menu.Floating = floating
 
-local dragging = false
-local dragStart, startPos
+local drag: { input: InputObject, origin: Vector3, position: UDim2 }? = nil
 trackConnection(topBar.InputBegan:Connect(function(input)
+	if drag then return end
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = true
-		dragStart = input.Position
-		startPos = root.Position
+		drag = { input = input, origin = input.Position, position = root.Position }
 	end
 end))
 trackConnection(UserInputService.InputChanged:Connect(function(input)
-	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-		local delta = input.Position - dragStart
+	local active = drag
+	if active and (input == active.input or (active.input.UserInputType == Enum.UserInputType.MouseButton1
+		and input.UserInputType == Enum.UserInputType.MouseMovement)) then
+		local delta = input.Position - active.origin
+		local startPos = active.position
 		root.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 	end
 end))
 trackConnection(UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = false
+	if drag and input == drag.input then
+		drag = nil
 	end
 end))
 
@@ -453,15 +454,18 @@ local function setOpen(value: boolean)
 	ModMenu.Menu.Open = value
 	root.Visible = value
 	floating.Visible = not value
-	if not value and ModMenu.UI and ModMenu.UI.hideDropdowns then
-		ModMenu.UI.hideDropdowns()
+	if not value then
+		drag = nil
+		if ModMenu.UI and ModMenu.UI.hideDropdowns then
+			ModMenu.UI.hideDropdowns()
+		end
 	end
 end
 ModMenu.Menu.setOpen = setOpen
 
-closeBtn.MouseButton1Click:Connect(function() setOpen(false) end)
-minBtn.MouseButton1Click:Connect(function() setOpen(false) end)
-floating.MouseButton1Click:Connect(function() setOpen(true) end)
+closeBtn.Activated:Connect(function() setOpen(false) end)
+minBtn.Activated:Connect(function() setOpen(false) end)
+floating.Activated:Connect(function() setOpen(true) end)
 
 trackConnection(S.UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
